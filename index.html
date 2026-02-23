@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="fi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'" />
+  <title>Voimavalmennusjärjestelmä – Golden Standard</title>
+  <style>
+    :root{--bg:#0b1220;--card:#121d33;--muted:#95a6c7;--txt:#e8eefc;--acc:#4f8cff;--warn:#f59e0b;--ok:#22c55e;--bad:#ef4444}
+    *{box-sizing:border-box} body{margin:0;font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--txt)}
+    .wrap{max-width:1300px;margin:auto;padding:14px}
+    .top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
+    .badge{padding:6px 10px;border:1px solid #2b3b5d;border-radius:999px;color:var(--muted);font-size:12px}
+    .tabs{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+    .tabs button,.btn{background:#162442;color:var(--txt);border:1px solid #314976;border-radius:10px;padding:9px 12px;cursor:pointer}
+    .tabs button.active{background:var(--acc);border-color:var(--acc)}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px}
+    .card{background:var(--card);border:1px solid #26385d;border-radius:12px;padding:12px}
+    h1,h2,h3{margin:.2rem 0 .6rem} h1{font-size:1.4rem} h2{font-size:1.05rem}
+    label{display:block;font-size:13px;margin:7px 0} input,select,textarea{width:100%;padding:8px;border-radius:8px;border:1px solid #32476f;background:#0f1a31;color:var(--txt)}
+    textarea{min-height:86px} .row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px} .row3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+    .muted{color:var(--muted);font-size:12px} .danger{color:var(--bad)} .ok{color:var(--ok)} .warn{color:var(--warn)}
+    table{width:100%;border-collapse:collapse;font-size:12px} th,td{border-bottom:1px solid #25375c;padding:6px;text-align:left}
+    .kpi{font-size:1.3rem;font-weight:700} .mono{font-family:ui-monospace,Consolas,monospace}
+    .hidden{display:none}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1>Lisäpainoleuanvedon adaptiivinen optimointikone</h1>
+    <div class="badge">Ei lääketieteellinen laite · Päätökset ovat yliajettavissa</div>
+  </div>
+  <div class="tabs" id="tabs"></div>
+  <section id="view"></section>
+</div>
+
+<script>
+(() => {
+  const APP_KEY='pullUpSessionsSettingsV2', DB_NAME='pullUpCoachDB', DB_VERSION=2; // pullUpSessions = canonical session fallback key
+  const PRIMARY_MOVEMENTS=['Lisäpainoleuanveto','Leuanveto','Penkkipunnerrus','Kyykky','Maastaveto','Pystypunnerrus'];
+  const MOVEMENTS=['Lisäpainoleuanveto','Leuanveto','Penkkipunnerrus','Kyykky','Maastaveto','Pystypunnerrus','Kulmasoutu','Ylätalja','Dippi','Jalkaprässi','Romanialainen maastaveto','Hip thrust','Pystysoutu','Face pull','Hauiskääntö','Ranskalainen punnerrus','Etukyykky','Takakyykky','Tempausveto','Työntö','Punnerrus','Askelkyykky','Pohkeet'];
+  const MOVEMENT_ALIASES={leuat:'Lisäpainoleuanveto',leuanveto:'Leuanveto','pull-up':'Lisäpainoleuanveto',pullup:'Lisäpainoleuanveto',penkki:'Penkkipunnerrus',mave:'Maastaveto',pystäri:'Pystypunnerrus',kyykky:'Kyykky'};
+
+  const state={
+    tab:'Session',
+    settings:loadSettings(),
+    sessions:[],
+    models:{},
+    quality:{flags:[],outlierRate:0,lastN:0},
+    db:null,
+  };
+
+  const tabs=['Setup Wizard','Session','Plan Engine','Dashboard','Rules','Diagnostics'];
+  function loadSettings(){
+    try { return JSON.parse(localStorage.getItem(APP_KEY)) || {units:'kg',mode:'HYBRID MODE',deviceMetric:'mean',errorMargin:'conservative',primary:['Lisäpainoleuanveto'],competitionDate:''}; }
+    catch { return {units:'kg',mode:'HYBRID MODE',deviceMetric:'mean',errorMargin:'conservative',primary:['Lisäpainoleuanveto'],competitionDate:''}; }
+  }
+  function saveSettings(){ localStorage.setItem(APP_KEY,JSON.stringify(state.settings)); }
+
+  function parseNum(v){
+    if(v===null||v===undefined||v==='') return null;
+    const cleaned=String(v).trim().replace(/,/g,'.').replace(/[^0-9.+-]/g,'');
+    const n=Number(cleaned); return Number.isFinite(n)?n:null;
+  }
+  const toISO=() => new Date().toISOString().slice(0,10);
+  const uid=()=> (crypto?.randomUUID ? crypto.randomUUID() : `id-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const ln=x=>x&&x>0?Math.log(x):null;
+
+  function initTabs(){
+    const root=document.getElementById('tabs');
+    root.innerHTML='';
+    tabs.forEach(t=>{ const b=document.createElement('button'); b.textContent=t; b.className=t===state.tab?'active':''; b.onclick=()=>{state.tab=t;render();}; root.appendChild(b);});
+  }
+
+  function openDb(){
+    return new Promise((resolve)=>{
+      if(!('indexedDB' in window)) return resolve(null);
+      const req=indexedDB.open(DB_NAME,DB_VERSION);
+      req.onupgradeneeded=(e)=>{
+        const db=e.target.result;
+        if(!db.objectStoreNames.contains('sessions')) db.createObjectStore('sessions',{keyPath:'id'});
+        if(!db.objectStoreNames.contains('models')) db.createObjectStore('models',{keyPath:'movementVariantId'});
+      };
+      req.onsuccess=()=>resolve(req.result);
+      req.onerror=()=>resolve(null);
+    });
+  }
+  function idbGetAll(store){ return new Promise((res)=>{ if(!state.db) return res(null); const tx=state.db.transaction(store,'readonly').objectStore(store).getAll(); tx.onsuccess=()=>res(tx.result); tx.onerror=()=>res(null); }); }
+  function idbPut(store,obj){ return new Promise((res)=>{ if(!state.db) return res(false); const tx=state.db.transaction(store,'readwrite').objectStore(store).put(obj); tx.onsuccess=()=>res(true); tx.onerror=()=>res(false); }); }
+  function idbDelete(store,id){ return new Promise((res)=>{ if(!state.db) return res(false); const tx=state.db.transaction(store,'readwrite').objectStore(store).delete(id); tx.onsuccess=()=>res(true); tx.onerror=()=>res(false); }); }
+
+  function fallbackLoad(){
+    try{return JSON.parse(localStorage.getItem('pullUpSessions'))||[]}catch{return[]}
+  }
+  function fallbackSave(){ localStorage.setItem('pullUpSessions',JSON.stringify(state.sessions)); }
+
+  async function loadData(){
+    state.db=await openDb();
+    const s=await idbGetAll('sessions');
+    const m=await idbGetAll('models');
+    state.sessions=(s&&Array.isArray(s))?s:fallbackLoad();
+    if(Array.isArray(m)) state.models=Object.fromEntries(m.map(x=>[x.movementVariantId,x]));
+    migrate();
+    state.sessions=dedupeSessionsById(state.sessions);
+  }
+  function migrate(){
+    state.sessions=state.sessions.map(x=>{
+      const normalizedDate=x.dateISO||x.date||toISO();
+      const defaultMovement=x.exercise||'Lisäpainoleuanveto';
+      const base={
+        id:x.id||uid(),
+        schemaVersion:2,
+        dateISO:normalizedDate,
+        tags:Array.isArray(x.tags)?x.tags:[],
+        readiness:x.readiness??3,
+        sleepHours:x.sleepHours??null,
+        HRV_rmssd:x.HRV_rmssd??null,
+        HRV_ln_rmssd:x.HRV_ln_rmssd??ln(x.HRV_rmssd),
+        HRV_source:x.HRV_source||'manual',
+        deviceSource:x.deviceSource||'',
+        measurementTime:x.measurementTime||'',
+        aggregationLevel:x.aggregationLevel||'daily',
+        bodyweightKg:x.bodyweightKg??null,
+        notes:x.notes||'',
+      };
+
+      let normalizedSets=[];
+      if(Array.isArray(x.sets)){
+        normalizedSets=x.sets.map(set=>{
+          const movementId=set.movementId||x.exercise||'Lisäpainoleuanveto';
+          const bodyweightKg=set.bodyweightKg??x.bodyweightKg??null;
+          const externalWeightKg=set.externalWeightKg??set.weightKg??x.weight??null;
+          return {
+            id:set.id||uid(),
+            movementId,
+            movementVariantId:set.movementVariantId||`${movementId}::standard`,
+            timestamp:set.timestamp||new Date(`${normalizedDate}T12:00:00`).toISOString(),
+            externalWeightKg,
+            bodyweightKg,
+            systemWeightKg:set.systemWeightKg??((bodyweightKg??0)+(externalWeightKg??0)),
+            repsPlanned:set.repsPlanned??set.reps??x.reps??null,
+            repsDone:set.repsDone??set.reps??x.reps??null,
+            targetRIR:set.targetRIR??null,
+            actualRIR:set.actualRIR??null,
+            meanVelocity:set.meanVelocity??null,
+            peakVelocity:set.peakVelocity??null,
+            velocityMetricUsed:set.velocityMetricUsed||state.settings.deviceMetric,
+            velocityLossPercent:set.velocityLossPercent??null,
+            restSeconds:set.restSeconds??null,
+            setRole:set.setRole||'top',
+            tags:Array.isArray(set.tags)?set.tags:[]
+          };
+        });
+      } else {
+        const legacyMovement=x.exercise||defaultMovement;
+        const legacyWeight=parseNum(x.weight);
+        const legacyReps=parseNum(x.reps);
+        const legacySetCount=Math.max(0, Math.trunc(parseNum(x.sets)||0));
+        if(legacySetCount>0 && legacyReps!==null){
+          normalizedSets=Array.from({length:legacySetCount}, (_,i)=>{
+            const bodyweightKg=x.bodyweightKg??null;
+            const externalWeightKg=legacyWeight;
+            return {
+              id:uid(),
+              movementId:legacyMovement,
+              movementVariantId:`${legacyMovement}::standard`,
+              timestamp:new Date(`${normalizedDate}T12:${String(i).padStart(2,'0')}:00`).toISOString(),
+              externalWeightKg,
+              bodyweightKg,
+              systemWeightKg:(bodyweightKg??0)+(externalWeightKg??0),
+              repsPlanned:legacyReps,
+              repsDone:legacyReps,
+              targetRIR:parseNum(x.targetRIR),
+              actualRIR:parseNum(x.actualRIR),
+              meanVelocity:null,
+              peakVelocity:null,
+              velocityMetricUsed:state.settings.deviceMetric,
+              velocityLossPercent:null,
+              restSeconds:null,
+              setRole:i===0?'top':'backoff',
+              tags:[]
+            };
+          });
+        }
+      }
+
+      return {...base, sets:normalizedSets};
+    });
+  }
+
+  function isPullUpMovement(movement){
+    return movement==='Lisäpainoleuanveto' || movement==='Leuanveto';
+  }
+
+  function getAllSetsSorted(){
+    return state.sessions
+      .slice()
+      .sort((a,b)=>String(a.dateISO).localeCompare(String(b.dateISO)))
+      .flatMap(session => (Array.isArray(session.sets)?session.sets:[])
+        .slice()
+        .sort((a,b)=>String(a.timestamp||'').localeCompare(String(b.timestamp||'')))
+        .map(set => ({...set, dateISO: session.dateISO}))
+      );
+  }
+
+  function e1RMExternal(set){
+    const reps=set.repsDone;
+    const load=set.externalWeightKg;
+    if(!(reps>=1&&reps<=10&&load!==null&&load!==undefined&&load>=0)) return {value:null,confidence:'low'};
+    const rir=(set.actualRIR??set.targetRIR??2);
+    return {value:load*(1+(reps+rir)/30),confidence:reps>8?'low':'medium'};
+  }
+
+
+
+  function e1RMSystem(set){
+    const reps=set.repsDone, load=set.systemWeightKg ?? ((set.bodyweightKg||0)+(set.externalWeightKg||0));
+    if(!(reps>=1&&reps<=10&&load>0)) return {value:null,confidence:'low'};
+    const rir=(set.actualRIR??set.targetRIR??2); // Epley-RIR extension
+    const value=load*(1+(reps+rir)/30);
+    let c='medium'; if(set.meanVelocity||set.peakVelocity) c='high'; if(reps>8) c='low';
+    return {value,confidence:c};
+  }
+
+  function robustRegression(points){
+    if(points.length<3) return null;
+    const ys=points.map(p=>p.v), med=median(ys), madVal=mad(ys);
+    const filtered=points.filter(p=>madVal===0||Math.abs((p.v-med)/(1.4826*madVal))<3.5);
+    const n=filtered.length; if(n<3) return null;
+    const sx=sum(filtered.map(p=>p.w)), sy=sum(filtered.map(p=>p.v)), sxx=sum(filtered.map(p=>p.w*p.w)), sxy=sum(filtered.map(p=>p.w*p.v));
+    const denom=n*sxx-sx*sx; if(denom===0) return null;
+    const b=(n*sxy-sx*sy)/denom, a=(sy-b*sx)/n;
+    const yhat=filtered.map(p=>a+b*p.w), r2=rSquared(filtered.map(p=>p.v), yhat);
+    const outlierRate=1-(filtered.length/points.length);
+    return {a,b,r2,n:filtered.length,outlierRate,lastUpdatedISO:new Date().toISOString(),SEE_percent:see(filtered,yhat),flags:r2<0.4?['LOW_R2']:[]};
+  }
+
+  function updateModels(){
+    const byVar={};
+    state.sessions.forEach(s=>s.sets.forEach(set=>{
+      const v=set.meanVelocity??set.peakVelocity;
+      if(!v||!set.movementVariantId||!set.systemWeightKg) return;
+      (byVar[set.movementVariantId]||(byVar[set.movementVariantId]=[])).push({w:set.systemWeightKg,v});
+    }));
+    const qualities=[];
+    Object.entries(byVar).forEach(([variant,pts])=>{
+      const reg=robustRegression(pts); if(!reg) return;
+      const movementId=variant.split('::')[0]; const model={movementVariantId:variant,movementId,deviceProfileId:'default',velocityMetricUsedDefault:state.settings.deviceMetric,regression:{a:reg.a,b:reg.b,r2:reg.r2,n:reg.n,lastUpdatedISO:reg.lastUpdatedISO},method:'multi-point',calibration:{requiredVelocitySpread:0.5,minHighLoadPercent:0.85,lastCalibrationISO:reg.lastUpdatedISO},uncertainty:{SEE_percent:reg.SEE_percent,SEE_kg_est:null},dataQuality:{outlierRate:reg.outlierRate,lastNPoints:reg.n,flags:reg.flags}};
+      state.models[variant]=model; idbPut('models',model);
+      qualities.push(reg.outlierRate);
+    });
+    state.quality={flags:qualities.some(x=>x>0.25)?['DATA TOO NOISY']:[],outlierRate:qualities[0]||0,lastN:Object.keys(state.models).length};
+  }
+
+  function recommend(movement='Lisäpainoleuanveto'){
+    const sets=getAllSetsSorted().filter(s=>s.movementId===movement).slice(-12);
+    if(!sets.length) return {action:'hold',deltaPct:0,confidence:'low',why:['Ei riittävästi dataa']};
+    const recent=sets.slice(-4);
+    const rirErr=avg(recent.map(s=>((s.actualRIR??s.targetRIR??2)-(s.targetRIR??2))));
+    const trendSeries=recent.map(s=>isPullUpMovement(movement)?e1RMExternal(s).value:e1RMSystem(s).value).filter(Boolean);
+    const eTrend=trend(trendSeries);
+    const lastSession=state.sessions[state.sessions.length-1]||{};
+    const sleep=lastSession.sleepHours??7, ready=lastSession.readiness??3;
+    const hrvCount=state.sessions.filter(s=>s.HRV_ln_rmssd).length;
+    let deltaPct=0, action='hold'; const why=[];
+    if(rirErr>0.8&&eTrend>=0){deltaPct=2.5;action='progressio';why.push('Sarjat tuntuivat kevyiltä (RIR)');}
+    if(rirErr<-0.8||eTrend<0){deltaPct=-2.5;action='deload';why.push('RIR-virhe tai e1RM-trendi negatiivinen');}
+    if(sleep<6||ready<=2){deltaPct=Math.min(deltaPct,0); if(deltaPct===0) action='hold'; why.push('Uni/readiness rajoittaa aggressiivisuutta');}
+    if(hrvCount>=3){
+      const h=state.sessions.map(s=>s.HRV_ln_rmssd).filter(Boolean).slice(-7);
+      const mean=avg(h), sd=std(h); const today=h[h.length-1];
+      if(today<mean-0.5*sd){deltaPct=Math.min(deltaPct,0);why.push('HRV trendi SWC-alueen alapuolella → cap')}
+    } else { why.push('HRV alle 3 mittausta/vko: ei käytetty päätökseen') }
+
+    if(recent.length<=2){
+      deltaPct=deltaPct/2;
+      if(deltaPct!==0) why.push('Vain 1–2 tuoretta havaintoa → varovainen puolitus')
+    }
+
+    deltaPct=Math.max(-5,Math.min(5,deltaPct));
+    const model=Object.values(state.models).find(m=>m.movementId===movement);
+    let confidence='medium';
+    if(!model||model.regression.r2<0.5||model.uncertainty.SEE_percent>12) { confidence='low'; if(deltaPct!==0) deltaPct=deltaPct/2; why.push('Mallin epävarmuus korkea → pienempi muutos'); }
+    return {action,deltaPct,confidence,why};
+  }
+
+  function solveLoad(goal='strength', movement='Lisäpainoleuanveto', reps=3, targetRIR=2){
+    const sets=getAllSetsSorted().filter(s=>s.movementId===movement);
+    const last=sets[sets.length-1];
+    if(!last) return {load:null,explain:['Ei historiallista settiä'],confidence:'low'};
+    const rec=recommend(movement);
+    const base=(last.externalWeightKg??0); const suggested=Math.max(0,base*(1+rec.deltaPct/100));
+    const vlCap=goal==='speed'?8:goal==='volume'?18:12;
+    return {load:+suggested.toFixed(2),external:+suggested.toFixed(2),expectedVelocity:last.meanVelocity?[Math.max(0,last.meanVelocity*0.95).toFixed(2), (last.meanVelocity*1.05).toFixed(2)]:null,stop:`Lopeta kun VL > ${vlCap}% tai actualRIR <= 0`,confidence:rec.confidence,explain:[`Pohja: viimeisin kuorma ${base} kg`,`Muutos: ${rec.deltaPct}% (${rec.action})`,...rec.why]};
+  }
+
+  function parseBulk(text, sessionMeta){
+    const lines=text.split(/\n+/).map(x=>x.trim()).filter(Boolean);
+    const out=[];
+    for(const lineRaw of lines){
+      const line=lineRaw.replace(/×/g,'x');
+      const lower=line.toLowerCase();
+      const aliasHit=Object.entries(MOVEMENT_ALIASES).find(([alias])=>lower.includes(alias));
+      const movement=(aliasHit?.[1]||MOVEMENTS.find(m=>lower.includes(m.toLowerCase()))||sessionMeta.defaultMovement||'Lisäpainoleuanveto');
+      const rirMatch=line.match(/@?RIR\s*([0-9.,]+)/i); const rir=parseNum(rirMatch&&rirMatch[1]);
+      const vMatch=line.match(/(?:v|V)([0-9.,]+)/); const vel=parseNum(vMatch&&vMatch[1]);
+      const vlMatch=line.match(/vl\s*([0-9.,]+)%/i); const vl=parseNum(vlMatch&&vlMatch[1]);
+      const restMatch=line.match(/r\s*(\d+)/i); const rest=parseNum(restMatch&&restMatch[1]);
+      if(/(\d+[.,]?\d*)\s*x\s*(\d+)\s*x\s*(\d+[.,]?\d*)/.test(line)){ // 3x6x77.5
+        const [,sets,reps,weight]=line.match(/(\d+[.,]?\d*)\s*x\s*(\d+)\s*x\s*(\d+[.,]?\d*)/);
+        for(let i=0;i<parseInt(sets,10);i++) out.push(makeSet(movement,parseNum(weight),parseNum(reps),rir,vel,vl,rest,sessionMeta));
+        continue;
+      }
+      if(/:\s*([\d,\s]+)/.test(line)){ // +50: 5,4,4
+        const m=line.match(/([+\-]?\d+[.,]?\d*)\s*:\s*([\d,\s]+)/);
+        if(m){ const wt=parseNum(m[1]); m[2].split(',').map(x=>parseNum(x)).filter(Boolean).forEach(r=>out.push(makeSet(movement,wt,r,rir,vel,vl,rest,sessionMeta))); continue; }
+      }
+      const single=line.match(/([+\-]?\d+[.,]?\d*)\s*x\s*(\d+)/); // 75x6
+      if(single){ out.push(makeSet(movement,parseNum(single[1]),parseNum(single[2]),rir,vel,vl,rest,sessionMeta)); continue; }
+    }
+    return out;
+  }
+
+  function makeSet(movement,extWeight,reps,rir,vel,vl,rest,meta){
+    const bw=parseNum(meta.bodyweightKg);
+    return {id:uid(),movementId:movement,movementVariantId:`${movement}::standard`,timestamp:new Date().toISOString(),externalWeightKg:extWeight,bodyweightKg:bw,systemWeightKg:(bw||0)+(extWeight||0),repsPlanned:reps,repsDone:reps,targetRIR:meta.targetRIR??rir,actualRIR:rir,meanVelocity:state.settings.deviceMetric==='mean'?vel:null,peakVelocity:state.settings.deviceMetric==='peak'?vel:null,velocityMetricUsed:state.settings.deviceMetric,velocityLossPercent:vl,restSeconds:rest,setRole:'top',tags:meta.tags||[]};
+  }
+
+  function qualityGate(session){
+    const sets=session.sets||[]; let rejected=0;
+    const usable=sets.filter(s=>{
+      if(!s.movementVariantId){rejected++;return false;}
+      if(state.settings.mode==='SENSOR MODE' && !(s.meanVelocity||s.peakVelocity)){rejected++;return false;}
+      return true;
+    });
+    const vs=usable.map(s=>s.meanVelocity??s.peakVelocity).filter(Boolean);
+    if(vs.length>=4){
+      const m=median(vs), md=mad(vs);
+      const filtered=usable.filter(s=>{const v=s.meanVelocity??s.peakVelocity; if(!v||md===0) return true; const z=Math.abs((v-m)/(1.4826*md)); if(z>3.5){rejected++;return false;} return true;});
+      session.sets=filtered;
+    } else session.sets=usable;
+    const rate=sets.length?rejected/sets.length:0;
+    return {rate,flag:rate>0.25?'DATA TOO NOISY':''};
+  }
+
+  async function saveSession(session){
+    const q=qualityGate(session); if(q.flag) alert('DATA TOO NOISY: siirry konservatiiviseen RIR-ohjaukseen.');
+    state.sessions.push(session);
+    if(!(await idbPut('sessions',session))) fallbackSave();
+    updateModels(); render();
+  }
+
+  function renderSetup(){
+    return `<div class="grid"><div class="card"><h2>Setup Wizard</h2>
+      <label>Nimi<input id="athleteName" value="${state.settings.athleteName||''}"></label>
+      <label>Treenipäivät/viikko<input id="days" value="${state.settings.days||4}" type="number"></label>
+      <label>Kesto / treeni (min)<input id="dur" value="${state.settings.duration||75}" type="number"></label>
+      <label>Mode<select id="mode"><option>SENSOR MODE</option><option>HYBRID MODE</option><option>NO SENSOR MODE</option></select></label>
+      <label>Velocity-metriikka<select id="metric"><option value="mean">mean</option><option value="peak">peak</option></select></label>
+      <label>Kilpailupäivä (valinnainen)<input id="comp" type="date" value="${state.settings.competitionDate||''}"></label>
+      <label>Primary liftit (pilkuilla)<input id="primary" value="${(state.settings.primary||PRIMARY_MOVEMENTS).join(', ')}"></label>
+      <button class="btn" id="saveSetup">Tallenna setup</button>
+      <p class="muted">Schema-versionointi + migrate käytössä (taaksepäin yhteensopiva).</p></div>
+      <div class="card"><h2>Demo ja datahallinta</h2>
+      <button class="btn" id="loadDemo">Load demo (1–2 viikkoa)</button>
+      <button class="btn" id="exportJson">Export JSON (täysi)</button>
+      <button class="btn" id="exportCsv">Export CSV (setit)</button>
+      <label>Import JSON/CSV<input id="importFile" type="file"></label>
+      <button class="btn danger" id="wipe">Poista kaikki data (GDPR)</button>
+      <p class="muted">Dataminimointi: tallennetaan vain suoritus- ja readiness-signaalit.</p></div></div>`;
+  }
+
+  function renderSession(){
+    const r=recommend(state.settings.primary?.[0]||'Lisäpainoleuanveto');
+    const s=solveLoad('strength',state.settings.primary?.[0]||'Lisäpainoleuanveto',3,2);
+    return `<div class="grid"><div class="card"><h2>Session Screen (keyboard-first)</h2>
+      <div class="row3"><label>Päivä<input id="dateISO" type="date" value="${toISO()}"></label>
+      <label>Bodyweight kg<input id="bw" placeholder="esim 82,4"></label>
+      <label>Readiness 1-5<input id="ready" type="number" min="1" max="5" value="3"></label></div>
+      <div class="row3"><label>Sleep h<input id="sleep" type="number" step="0.1" value="7"></label>
+      <label>HRV RMSSD<input id="hrv" placeholder="optional"></label>
+      <label>Liike<select id="defaultMovement">${MOVEMENTS.map(m=>`<option>${m}</option>`).join('')}</select></label></div>
+      <label>Bulk parser<textarea id="bulk" placeholder="leuat +60x3 @RIR2 v0.32 vl12% r180\n92,5x2 V0.31\n3x6x75\nleuat +50: 5,4,4 @RIR2"></textarea></label>
+      <div class="row"><label>Target RIR<input id="targetRIR" value="2"></label><label>Tagit (pilkuilla)<input id="tags" placeholder="strict,belt"></label></div>
+      <label>Muistiinpanot<textarea id="notes"></textarea></label>
+      <button class="btn" id="saveSession">Tallenna sessio (Enter)</button>
+      <p class="muted">Hard guard: kuormamuutos max ±5% per päätösaskel.</p></div>
+      <div class="card"><h2>Deterministinen suositus</h2>
+        <p><b>Toiminto:</b> ${r.action} (${r.deltaPct>0?'+':''}${r.deltaPct}%) · <b>Confidence:</b> ${r.confidence}</p>
+        <p><b>Ehdotettu lisäpaino:</b> ${s.load??'-'} kg</p>
+        <p><b>Stop rule:</b> ${s.stop||'-'}</p>
+        <ul>${(s.explain||[]).map(x=>`<li>${x}</li>`).join('')}</ul>
+        <p class="warn">HRV ei tee päätöstä yksinään; se vain rajoittaa aggressiivisuutta.</p>
+      </div></div>`;
+  }
+
+  function renderPlan(){
+    const comp=state.settings.competitionDate?new Date(state.settings.competitionDate):null;
+    const days=comp?Math.max(0,Math.floor((comp-new Date())/86400000)):null;
+    const taper=comp?`Ehdotus: 1–3 viikon taper, volyymi -40…-60%, intensiteetti lähellä normaalia, viimeinen raskas altistus ~7–14 pv ennen.`:'Syötä kilpailupäivä Setupissa.';
+    return `<div class="grid"><div class="card"><h2>Microcycle / Mesocycle</h2>
+      <p>Valitse per pääliike 1–3 altistusta: heavy / medium / technique-speed.</p>
+      <table><tr><th>Liike</th><th>Heavy</th><th>Medium</th><th>Technique</th></tr>
+      ${(state.settings.primary||PRIMARY_MOVEMENTS).map(m=>`<tr><td>${m}</td><td>1</td><td>1</td><td>1</td></tr>`).join('')}</table>
+      <p class="muted">Mesocycle 4–8 viikkoa + sisäänrakennettu deload viikolla 4/8 trendien mukaan.</p></div>
+      <div class="card"><h2>Peaking / Taper</h2>
+      <p>Kisaan: ${days===null?'-':days+' päivää'}</p><p>${taper}</p></div></div>`;
+  }
+
+  function renderDashboard(){
+    const sessions=state.sessions.slice().sort((a,b)=>a.dateISO.localeCompare(b.dateISO));
+    const allSets=getAllSetsSorted(); const recent=sessions.slice(-8).reverse();
+    const eTrend=allSets.map(s=>{
+      const metric=isPullUpMovement(s.movementId)?e1RMExternal(s):e1RMSystem(s);
+      return {d:s.dateISO,m:s.movementId,e:metric.value,c:metric.confidence};
+    }).filter(x=>x.e);
+    const weekly={}; allSets.forEach(s=>{const w=s.dateISO.slice(0,7); weekly[w]=(weekly[w]||0)+((s.repsDone||0)*(s.systemWeightKg||0));});
+    const hrv=sessions.map(s=>s.HRV_ln_rmssd).filter(Boolean); const hrvAvg=rolling(hrv,7).slice(-1)[0];
+    const acwr=acwrLoad(allSets);
+    return `<div class="grid"><div class="card"><h2>Recent sessions</h2>
+      <table><tr><th>Pvm</th><th>Setit</th><th>Readiness</th><th>Toiminnot</th></tr>${recent.map(s=>`<tr><td>${s.dateISO}</td><td>${s.sets.length}</td><td>${s.readiness||'-'}</td><td><button class="btn del" data-id="${s.id}">Delete</button></td></tr>`).join('')}</table>
+      <p class="muted">ACWR-varoitus: ${acwr.warn?'<span class="warn">Kyllä</span>':'Ei'} (UI warning, ei loukkaantumisennuste).</p>
+      </div>
+      <div class="card"><h2>Trendit</h2>
+        <p>e1RM datapisteet: ${eTrend.length} · viimeisin: ${eTrend.at(-1)?.e?.toFixed(1)||'-'} kg</p>
+        <p>Lisäpainoleuanveto e1RM (external): ${eTrend.filter(x=>x.m==='Lisäpainoleuanveto').at(-1)?.e?.toFixed(1)||'-'} kg</p>
+        <p>Viikkotonnage: ${Object.entries(weekly).slice(-4).map(([k,v])=>`${k}: ${v.toFixed(0)}`).join(' | ')||'-'}</p>
+        <p>HRV 7d rolling lnRMSSD: ${hrvAvg?hrvAvg.toFixed(3):'-'}</p>
+      </div>
+      <div class="card"><h2>Model health</h2>
+      ${Object.values(state.models).map(m=>`<div><b>${m.movementVariantId}</b> r²=${m.regression.r2.toFixed(2)} n=${m.regression.n} SEE%=${m.uncertainty.SEE_percent.toFixed(1)}</div>`).join('')||'<p>Ei mallia vielä.</p>'}
+      </div></div>`;
+  }
+
+  function renderRules(){
+    return `<div class="card"><h2>Rules (läpinäkyvyys)</h2><ol>
+      <li>e1RM näytetään vain 1–10 toiston seteistä (muuten low confidence).</li>
+      <li>Sensor-mode vaatii velocity-datan, muuten datapiste hylätään.</li>
+      <li>Outlierit poistetaan MAD-menetelmällä ennen regressiopäivitystä.</li>
+      <li>Kuormamuutos max ±5% per päätösaskel (single-observation guard: 1–2 havaintoa puolittaa muutoksen).</li>
+      <li>HRV/uni/readiness voivat vain rajoittaa aggressiivisuutta, eivät pakottaa aggressiiviseen nousuun.</li>
+      <li>Samat syötteet → sama suositus (deterministinen logiikka, ei satunnaisuutta).</li>
+    </ol></div>`;
+  }
+
+  function renderDiagnostics(){
+    return `<div class="grid"><div class="card"><h2>Data quality</h2>
+      <p>Outlier rate: ${(state.quality.outlierRate*100).toFixed(1)}%</p><p>Mallien määrä: ${state.quality.lastN}</p>
+      <p class="${state.quality.flags.length?'warn':'ok'}">${state.quality.flags.join(', ')||'OK'}</p></div>
+      <div class="card"><h2>Storage</h2>
+      <p>IndexedDB: ${state.db?'käytössä':'ei saatavilla (fallback localStorage)'}</p>
+      <p>Offline-first: single-file toimii ilman verkkoa kun avattu selaimessa.</p>
+      </div></div>`;
+  }
+
+  function bind(){
+    const v=document.getElementById('view');
+    if(state.tab==='Setup Wizard'){
+      byId('mode').value=state.settings.mode; byId('metric').value=state.settings.deviceMetric;
+      byId('saveSetup').onclick=()=>{ state.settings={...state.settings,athleteName:byId('athleteName').value,days:parseNum(byId('days').value),duration:parseNum(byId('dur').value),mode:byId('mode').value,deviceMetric:byId('metric').value,competitionDate:byId('comp').value,primary:byId('primary').value.split(',').map(x=>x.trim()).filter(Boolean)}; saveSettings(); alert('Tallennettu'); render(); };
+      byId('loadDemo').onclick=loadDemo;
+      byId('exportJson').onclick=()=>download('coach-full-export.json',JSON.stringify({settings:state.settings,sessions:state.sessions,models:state.models},null,2),'application/json');
+      byId('exportCsv').onclick=()=>{const rows=['dateISO,movement,variant,externalWeightKg,systemWeightKg,repsDone,targetRIR,actualRIR,meanVelocity,peakVelocity,velocityLossPercent,restSeconds']; state.sessions.forEach(s=>s.sets.forEach(x=>rows.push([s.dateISO,x.movementId,x.movementVariantId,x.externalWeightKg,x.systemWeightKg,x.repsDone,x.targetRIR,x.actualRIR,x.meanVelocity,x.peakVelocity,x.velocityLossPercent,x.restSeconds].join(',')))); download('coach-sets.csv',rows.join('\n'),'text/csv'); };
+      byId('importFile').onchange=(e)=>importFile(e.target.files[0]);
+      byId('wipe').onclick=async()=>{ if(!confirm('Poistetaanko kaikki data?')) return; state.sessions=[]; state.models={}; localStorage.removeItem('pullUpSessions'); localStorage.removeItem(APP_KEY); if(state.db){const tx=state.db.transaction(['sessions','models'],'readwrite'); tx.objectStore('sessions').clear(); tx.objectStore('models').clear();} render(); };
+    }
+    if(state.tab==='Session'){
+      const submit=()=>{
+        const meta={bodyweightKg:byId('bw').value,targetRIR:parseNum(byId('targetRIR').value),tags:byId('tags').value.split(',').map(x=>x.trim()).filter(Boolean),defaultMovement:byId('defaultMovement').value};
+        const sets=parseBulk(byId('bulk').value,meta); if(!sets.length) return alert('Parseri ei löytänyt settejä.');
+        if((meta.defaultMovement==='Leuanveto' || meta.defaultMovement==='Lisäpainoleuanveto') && !parseNum(meta.bodyweightKg)) alert('Varoitus: kehonpaino puuttuu pull-up -päivänä.');
+        const hrv=parseNum(byId('hrv').value);
+        const session={id:uid(),schemaVersion:2,dateISO:byId('dateISO').value||toISO(),tags:meta.tags,readiness:parseNum(byId('ready').value)||3,sleepHours:parseNum(byId('sleep').value),HRV_rmssd:hrv,HRV_ln_rmssd:ln(hrv),HRV_source:'manual',deviceSource:'manual',measurementTime:'morning',aggregationLevel:'daily',bodyweightKg:parseNum(meta.bodyweightKg),notes:byId('notes').value,sets};
+        saveSession(session);
+      };
+      byId('saveSession').onclick=submit; v.onkeydown=(e)=>{if(e.key==='Enter'&&e.ctrlKey) submit();};
+    }
+    if(state.tab==='Dashboard'){
+      v.querySelectorAll('.del').forEach(b=>b.onclick=async()=>{const id=b.dataset.id; state.sessions=state.sessions.filter(s=>s.id!==id); await idbDelete('sessions',id); fallbackSave(); render();});
+    }
+  }
+
+
+  function dedupeSessionsById(list){
+    const seen=new Map();
+    list.forEach(s=>{ if(!s?.id) s.id=uid(); seen.set(s.id,s); });
+    return Array.from(seen.values());
+  }
+
+  function render(){
+    initTabs();
+    const v=document.getElementById('view');
+    v.innerHTML= state.tab==='Setup Wizard'?renderSetup():state.tab==='Session'?renderSession():state.tab==='Plan Engine'?renderPlan():state.tab==='Dashboard'?renderDashboard():state.tab==='Rules'?renderRules():renderDiagnostics();
+    bind();
+  }
+
+  async function loadDemo(){
+    const removedDemoIds=state.sessions.filter(s=>(s.tags||[]).includes('demo')).map(s=>s.id);
+    state.sessions=state.sessions.filter(s=>!(s.tags||[]).includes('demo'));
+    for(const id of removedDemoIds) await idbDelete('sessions',id);
+    const base=new Date(); const mk=(d,mv,w,r,rir,v)=>({id:uid(),movementId:mv,movementVariantId:`${mv}::standard`,timestamp:new Date(base.getTime()+d*86400000).toISOString(),externalWeightKg:w,bodyweightKg:82,systemWeightKg:82+w,repsPlanned:r,repsDone:r,targetRIR:rir,actualRIR:rir,meanVelocity:v,peakVelocity:null,velocityMetricUsed:'mean',velocityLossPercent:12,restSeconds:180,setRole:'top',tags:['strict']});
+    const days=[-10,-8,-6,-3,-1];
+    for(const d of days){
+      const session={id:uid(),schemaVersion:2,dateISO:new Date(base.getTime()+d*86400000).toISOString().slice(0,10),tags:['demo'],readiness:3+(d%2===0?1:0),sleepHours:7.2,HRV_rmssd:48+d*0.2,HRV_ln_rmssd:ln(48+d*0.2),HRV_source:'manual',deviceSource:'Polar',measurementTime:'06:30',aggregationLevel:'daily',bodyweightKg:82,notes:'demo',sets:[mk(d,'Lisäpainoleuanveto',50+d*0.3,3,2,0.36),mk(d,'Penkkipunnerrus',95+d*0.2,4,2,0.29)]};
+      state.sessions.push(session); await idbPut('sessions',session);
+    }
+    updateModels(); render();
+  }
+
+  function importFile(file){
+    if(!file) return; const r=new FileReader();
+    r.onload=async()=>{
+      const txt=r.result;
+      if(file.name.endsWith('.json')){
+        try{
+          const data=JSON.parse(txt);
+          const incomingRaw=Array.isArray(data.sessions)?data.sessions:(Array.isArray(data)?data:[]);
+          const merged=new Map(state.sessions.map(s=>[s.id,s]));
+          incomingRaw.forEach(s=>{ const id=s.id||uid(); merged.set(id,{...s,id}); });
+          state.sessions=Array.from(merged.values());
+          migrate();
+          for(const s of state.sessions) await idbPut('sessions',s);
+          render();
+        }catch{alert('Virheellinen JSON');}
+      } else if(file.name.endsWith('.csv')) {
+        alert('CSV import: toteutettu HRV/uni-setit JSONin kautta ensisijaisesti.');
+      }
+    };
+    r.readAsText(file);
+  }
+
+  function download(name,content,type){ const b=new Blob([content],{type}); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href); }
+  const byId=(id)=>document.getElementById(id);
+  const sum=(a)=>a.reduce((x,y)=>x+(+y||0),0);
+  const avg=(a)=>a.length?sum(a)/a.length:0;
+  const median=(a)=>{ if(!a.length) return 0; const s=[...a].sort((x,y)=>x-y); const m=Math.floor(s.length/2); return s.length%2?s[m]:(s[m-1]+s[m])/2; };
+  const mad=(a)=>{ const m=median(a); return median(a.map(x=>Math.abs(x-m))); };
+  const std=(a)=>{ const m=avg(a); return Math.sqrt(avg(a.map(x=>(x-m)**2))); };
+  const rolling=(a,n)=>a.map((_,i)=>avg(a.slice(Math.max(0,i-n+1),i+1)));
+  const trend=(a)=>a.length<2?0:(a[a.length-1]-a[0])/Math.abs(a[0]||1);
+  const rSquared=(y,yhat)=>{const ym=avg(y),ssr=sum(y.map((v,i)=>(v-yhat[i])**2)),sst=sum(y.map(v=>(v-ym)**2)); return sst===0?0:1-ssr/sst;};
+  const see=(pts,yhat)=>{const err=pts.map((p,i)=>Math.abs((p.v-yhat[i])/(p.v||1))*100); return avg(err);};
+  const acwrLoad=(sets)=>{ const day={}; sets.forEach(s=>{day[s.dateISO]=(day[s.dateISO]||0)+((s.repsDone||0)*(s.systemWeightKg||0));}); const vals=Object.values(day); const acute=avg(vals.slice(-7)), chronic=avg(vals.slice(-28)); const ratio=chronic?acute/chronic:0; return {ratio,warn:ratio>1.5}; };
+
+  loadData().then(()=>{ updateModels(); render(); });
+})();
+</script>
+</body>
+</html>
