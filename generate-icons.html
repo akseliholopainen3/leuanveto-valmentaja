@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generate PWA Icons - Leuanveto-valmentaja</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            gap: 24px;
+        }
+        h1 { font-size: 1.4rem; margin-bottom: 8px; }
+        p.info { font-size: 0.9rem; color: #999; max-width: 480px; text-align: center; }
+        .previews {
+            display: flex;
+            gap: 32px;
+            align-items: flex-end;
+        }
+        .preview-box {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+        .preview-box canvas {
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+        .label { font-size: 0.8rem; color: #888; }
+        button {
+            padding: 12px 32px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background: #3a86ff;
+            color: #fff;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+        button:hover { background: #2a6fdd; }
+        .instructions {
+            margin-top: 16px;
+            font-size: 0.85rem;
+            color: #777;
+            max-width: 520px;
+            text-align: center;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <h1>PWA Icon Generator</h1>
+    <p class="info">Preview the icons below, then click the button to download both PNG files. Place them in the icons/ folder.</p>
+
+    <div class="previews">
+        <div class="preview-box">
+            <canvas id="canvas192" width="192" height="192"></canvas>
+            <span class="label">192 x 192</span>
+        </div>
+        <div class="preview-box">
+            <canvas id="canvas512" width="512" height="512"></canvas>
+            <span class="label">512 x 512</span>
+        </div>
+    </div>
+
+    <button id="downloadBtn">Download Both Icons</button>
+
+    <p class="instructions">
+        After downloading, move <strong>icon-192.png</strong> and <strong>icon-512.png</strong>
+        into the <code>icons/</code> directory to replace the 1x1 placeholders.
+    </p>
+
+    <script>
+        function drawIcon(canvas, size) {
+            var ctx = canvas.getContext('2d');
+
+            // Dark blue background
+            ctx.fillStyle = '#0b1220';
+            ctx.fillRect(0, 0, size, size);
+
+            // Subtle gradient overlay for depth
+            var grad = ctx.createLinearGradient(0, 0, size, size);
+            grad.addColorStop(0, 'rgba(58,134,255,0.12)');
+            grad.addColorStop(1, 'rgba(58,134,255,0.0)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, size, size);
+
+            // "LV" text in white
+            var fontSize = Math.round(size * 0.42);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold ' + fontSize + 'px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('LV', size / 2, size / 2 + size * 0.02);
+
+            // Thin blue accent line below text
+            var lineY = size / 2 + fontSize * 0.42;
+            var lineW = size * 0.32;
+            ctx.strokeStyle = '#3a86ff';
+            ctx.lineWidth = Math.max(2, size * 0.012);
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(size / 2 - lineW / 2, lineY);
+            ctx.lineTo(size / 2 + lineW / 2, lineY);
+            ctx.stroke();
+        }
+
+        // Draw previews on page load
+        drawIcon(document.getElementById('canvas192'), 192);
+        drawIcon(document.getElementById('canvas512'), 512);
+
+        // Download helper
+        function downloadCanvas(canvas, filename) {
+            var link = document.createElement('a');
+            link.download = filename;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+
+        document.getElementById('downloadBtn').addEventListener('click', function() {
+            downloadCanvas(document.getElementById('canvas192'), 'icon-192.png');
+            // Small delay so browser handles two sequential downloads
+            setTimeout(function() {
+                downloadCanvas(document.getElementById('canvas512'), 'icon-512.png');
+            }, 500);
+        });
+    </script>
+</body>
+</html>

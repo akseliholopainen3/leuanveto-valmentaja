@@ -1,550 +1,1519 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="fi">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'" />
-  <title>Voimavalmennusjärjestelmä</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1220" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <title>LeVe Coach</title>
   <style>
-    :root{--bg:#0b1220;--card:#121d33;--muted:#95a6c7;--txt:#e8eefc;--acc:#4f8cff;--warn:#f59e0b;--ok:#22c55e;--bad:#ef4444}
-    *{box-sizing:border-box} body{margin:0;font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--txt)}
-    .wrap{max-width:1300px;margin:auto;padding:14px}
-    .top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
-    .badge{padding:6px 10px;border:1px solid #2b3b5d;border-radius:999px;color:var(--muted);font-size:12px}
-    .tabs{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
-    .tabs button,.btn{background:#162442;color:var(--txt);border:1px solid #314976;border-radius:10px;padding:9px 12px;cursor:pointer}
-    .tabs button.active{background:var(--acc);border-color:var(--acc)}
-    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px}
-    .card{background:var(--card);border:1px solid #26385d;border-radius:12px;padding:12px}
-    h1,h2,h3{margin:.2rem 0 .6rem} h1{font-size:1.4rem} h2{font-size:1.05rem}
-    label{display:block;font-size:13px;margin:7px 0} input,select,textarea{width:100%;padding:8px;border-radius:8px;border:1px solid #32476f;background:#0f1a31;color:var(--txt)}
-    textarea{min-height:86px} .row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px} .row3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-    .muted{color:var(--muted);font-size:12px} .danger{color:var(--bad)} .ok{color:var(--ok)} .warn{color:var(--warn)}
-    table{width:100%;border-collapse:collapse;font-size:12px} th,td{border-bottom:1px solid #25375c;padding:6px;text-align:left}
-    .kpi{font-size:1.3rem;font-weight:700} .mono{font-family:ui-monospace,Consolas,monospace}
-    .hidden{display:none}
+    :root {
+      --bg: #0b1220; --card: #121d33; --card2: #182744;
+      --border: #26385d; --border2: #314976;
+      --txt: #e8eefc; --muted: #8899bb; --dim: #5a6a8a;
+      --acc: #4f8cff; --acc2: #3a6fd8;
+      --ok: #22c55e; --ok2: #166534;
+      --warn: #f59e0b; --warn2: #92400e;
+      --bad: #ef4444; --bad2: #991b1b;
+      --radius: 12px; --radius-sm: 8px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg); color: var(--txt);
+      min-height: 100dvh; padding-bottom: env(safe-area-inset-bottom, 0);
+      -webkit-text-size-adjust: 100%;
+    }
+    a { color: var(--acc); }
+    /* ── Layout ── */
+    .app { max-width: 600px; margin: 0 auto; padding: 8px; padding-bottom: 80px; }
+    /* ── Nav ── */
+    .nav {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+      background: #0d1628; border-top: 1px solid var(--border);
+      display: flex; justify-content: space-around; padding: 6px 0;
+      padding-bottom: max(6px, env(safe-area-inset-bottom));
+    }
+    .nav button {
+      background: none; border: none; color: var(--muted); font-size: 10px;
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+      padding: 4px 8px; cursor: pointer; min-width: 56px;
+    }
+    .nav button.active { color: var(--acc); }
+    .nav button .icon { font-size: 20px; }
+    /* ── Cards ── */
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px; margin-bottom: 10px;
+    }
+    .card-title { font-size: 13px; color: var(--muted); font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      background: var(--acc); color: #fff; border: none; border-radius: var(--radius-sm);
+      padding: 12px 20px; font-size: 15px; font-weight: 600; cursor: pointer;
+      min-height: 48px; transition: background 0.15s;
+    }
+    .btn:active { background: var(--acc2); }
+    .btn-full { width: 100%; }
+    .btn-big { padding: 16px 24px; font-size: 18px; border-radius: var(--radius); }
+    .btn-outline { background: transparent; border: 1px solid var(--border2); color: var(--txt); }
+    .btn-outline:active { background: var(--card2); }
+    .btn-danger { background: var(--bad); }
+    .btn-danger:active { background: var(--bad2); }
+    .btn-ok { background: var(--ok); }
+    .btn-ok:active { background: var(--ok2); }
+    .btn-sm { padding: 8px 12px; font-size: 13px; min-height: 36px; }
+    .btn-group { display: flex; gap: 6px; flex-wrap: wrap; }
+    /* ── Inputs ── */
+    input, select, textarea {
+      width: 100%; padding: 10px 12px; border-radius: var(--radius-sm);
+      border: 1px solid var(--border2); background: #0f1a31; color: var(--txt);
+      font-size: 16px; min-height: 44px;
+    }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--acc); }
+    textarea { min-height: 80px; resize: vertical; }
+    label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; margin-top: 10px; }
+    /* ── Grid ── */
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    /* ── Tags / Chips ── */
+    .chip {
+      display: inline-flex; align-items: center; padding: 6px 12px;
+      border-radius: 999px; font-size: 13px; font-weight: 600;
+      border: 1px solid var(--border2); background: var(--card2);
+    }
+    .chip-green { color: var(--ok); border-color: var(--ok); }
+    .chip-yellow { color: var(--warn); border-color: var(--warn); }
+    .chip-red { color: var(--bad); border-color: var(--bad); }
+    /* ── KPI ── */
+    .kpi { font-size: 28px; font-weight: 700; }
+    .kpi-label { font-size: 12px; color: var(--muted); }
+    .kpi-row { display: flex; gap: 16px; flex-wrap: wrap; }
+    .kpi-box { flex: 1; min-width: 80px; }
+    /* ── Set buttons (touch-friendly) ── */
+    .set-btns {
+      display: flex; gap: 6px; flex-wrap: wrap;
+    }
+    .set-btn {
+      width: 52px; height: 52px; border-radius: var(--radius-sm);
+      border: 2px solid var(--border2); background: var(--card);
+      color: var(--txt); font-size: 18px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: all 0.1s;
+    }
+    .set-btn:active, .set-btn.selected {
+      background: var(--acc); border-color: var(--acc); color: #fff;
+    }
+    .set-btn-vara { font-size: 14px; }
+    /* ── Readiness indicator ── */
+    .readiness-dot {
+      width: 14px; height: 14px; border-radius: 50%; display: inline-block;
+    }
+    .readiness-dot.green { background: var(--ok); }
+    .readiness-dot.yellow { background: var(--warn); }
+    .readiness-dot.red { background: var(--bad); }
+    .readiness-dot.none { background: var(--dim); }
+    /* ── Progress bar ── */
+    .progress { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin: 8px 0; }
+    .progress-fill { height: 100%; background: var(--acc); transition: width 0.3s; }
+    /* ── Table ── */
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 8px 6px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+    /* ── Accordion ── */
+    .accordion-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 0; cursor: pointer; color: var(--muted); font-size: 13px;
+    }
+    .accordion-body { display: none; padding: 8px 0; }
+    .accordion-body.open { display: block; }
+    /* ── Helpers ── */
+    .muted { color: var(--muted); font-size: 12px; }
+    .dim { color: var(--dim); }
+    .text-ok { color: var(--ok); }
+    .text-warn { color: var(--warn); }
+    .text-bad { color: var(--bad); }
+    .text-center { text-align: center; }
+    .mt { margin-top: 12px; }
+    .mb { margin-bottom: 12px; }
+    .hidden { display: none !important; }
+    .flex-between { display: flex; justify-content: space-between; align-items: center; }
+    .gap-sm { gap: 6px; }
+    .fade-in { animation: fadeIn 0.2s ease-in; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    /* ── Notification toast ── */
+    .toast {
+      position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+      background: var(--card2); border: 1px solid var(--border2);
+      border-radius: var(--radius); padding: 12px 20px; z-index: 200;
+      font-size: 14px; max-width: 90%; text-align: center;
+      animation: fadeIn 0.2s ease-in;
+    }
+    .toast.warn { border-color: var(--warn); }
+    .toast.bad { border-color: var(--bad); }
+    .toast.ok { border-color: var(--ok); }
+    /* ── Section header ── */
+    .section-header { font-size: 18px; font-weight: 700; margin: 16px 0 10px; }
+    /* ── Exercise card in workout ── */
+    .exercise-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px; margin-bottom: 10px;
+    }
+    .exercise-name {
+      font-size: 16px; font-weight: 700; margin-bottom: 4px;
+      cursor: pointer;
+    }
+    .exercise-meta { font-size: 12px; color: var(--muted); }
+    .set-row {
+      display: flex; align-items: center; gap: 8px; padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .set-row:last-child { border-bottom: none; }
+    .set-number { font-size: 12px; color: var(--dim); width: 24px; text-align: center; }
+    .load-display {
+      background: var(--card2); border-radius: var(--radius-sm);
+      padding: 6px 10px; font-weight: 600; font-size: 15px;
+      cursor: pointer; min-width: 70px; text-align: center;
+    }
+    .load-up { color: var(--ok); }
+    /* ── Scrollable ── */
+    .scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="top">
-    <h1>Lisäpainoleuanvedon adaptiivinen optimointikone</h1>
-    <div class="badge">Ei lääketieteellinen laite · Päätökset ovat yliajettavissa</div>
-  </div>
-  <div class="tabs" id="tabs"></div>
-  <section id="view"></section>
-</div>
 
-<script>
-(() => {
-  const APP_KEY='pullUpSessionsSettingsV2', DB_NAME='pullUpCoachDB', DB_VERSION=2; // pullUpSessions = canonical session fallback key
-  const PRIMARY_MOVEMENTS=['Lisäpainoleuanveto','Leuanveto','Penkkipunnerrus','Kyykky','Maastaveto','Pystypunnerrus'];
-  const MOVEMENTS=['Lisäpainoleuanveto','Leuanveto','Penkkipunnerrus','Kyykky','Maastaveto','Pystypunnerrus','Kulmasoutu','Ylätalja','Dippi','Jalkaprässi','Romanialainen maastaveto','Hip thrust','Pystysoutu','Face pull','Hauiskääntö','Ranskalainen punnerrus','Etukyykky','Takakyykky','Tempausveto','Työntö','Punnerrus','Askelkyykky','Pohkeet'];
-  const MOVEMENT_ALIASES={leuat:'Lisäpainoleuanveto',leuanveto:'Leuanveto','pull-up':'Lisäpainoleuanveto',pullup:'Lisäpainoleuanveto',penkki:'Penkkipunnerrus',mave:'Maastaveto',pystäri:'Pystypunnerrus',kyykky:'Kyykky'};
+<div class="app" id="app"></div>
 
-  const state={
-    tab:'Session',
-    settings:loadSettings(),
-    sessions:[],
-    models:{},
-    quality:{flags:[],outlierRate:0,lastN:0},
-    db:null,
+<nav class="nav" id="nav"></nav>
+
+<div id="toast-container"></div>
+
+<script type="module">
+import {
+  initDB, uid, todayISO, parseNumericInput,
+  getAllMovements, getMovementsByCategory, getPrimaryMovement, addMovement, deleteMovement,
+  getVariantsForMovement,
+  getAllSessions, getSession, saveSession, deleteSession,
+  getSetsForSession, getAllSets, saveSet, saveSets, deleteSet,
+  saveMeasurement, getMeasurementsByType,
+  getActiveMesocycle, saveMesocycle, createDefaultMesocycle, getAllMesocycles,
+  getSettings, saveSettings,
+  exportFullBackup, importFullBackup,
+  parseCSV, importHistoricalCSV,
+  getMovementProgress, getAllMovementProgress, saveMovementProgress,
+  getTracesForRec,
+  CATEGORIES, PULL_VOLUME_CATEGORIES,
+  validateVelocity, validateLoad, validateReps, validateHRV, validateBodyweight,
+  isVelocityTypo,
+} from "./data.js";
+
+import {
+  recommend, e1rmSystem, e1rmExternal, e1rmAccessory,
+  ouraHRVtoLnRMSSD,
+  velocityReadiness, hrvReadiness, varaReadiness, combineReadiness,
+  computeBaseline, median, avg, roundToHalf,
+  failureReaction,
+  accessoryProgression, updateMovementProgressFromSets, initialWeightFrom1RM,
+  velocityLossPercent,
+  weeklyStimulus, checkStagnation,
+  getMesocycleWeek, getWeekDef, getTodayPlan,
+  breakAnalysis, speedDayLoad,
+  varaFeedback,
+} from "./engine.js";
+
+// ═══════════════════════════════════════════════════════════════
+// APP STATE
+// ═══════════════════════════════════════════════════════════════
+
+const state = {
+  view: "dashboard",
+  settings: null,
+  movements: [],
+  sessions: [],
+  allSets: [],
+  mesocycle: null,
+  recommendation: null,
+  readiness: { combined: "GREEN", capLevel: 0, channels: {} },
+  // Active workout state
+  workout: null, // { sessionId, dayType, exercises: [...], currentExerciseIdx, currentSetIdx, startedAt }
+  // HRV & velocity readiness inputs for today
+  todayHRV: null,
+  todayVelocity: null,
+};
+
+// ═══════════════════════════════════════════════════════════════
+// INITIALIZATION
+// ═══════════════════════════════════════════════════════════════
+
+async function init() {
+  await initDB();
+  state.settings = await getSettings();
+  state.movements = await getAllMovements();
+  state.sessions = await getAllSessions();
+  state.allSets = await getAllSets();
+  state.mesocycle = await getActiveMesocycle();
+  if (!state.mesocycle) {
+    state.mesocycle = createDefaultMesocycle(todayISO());
+    await saveMesocycle(state.mesocycle);
+  }
+  await computeReadiness();
+  await computeRecommendation();
+  render();
+}
+
+async function refresh() {
+  state.movements = await getAllMovements();
+  state.sessions = await getAllSessions();
+  state.allSets = await getAllSets();
+  state.mesocycle = await getActiveMesocycle();
+  await computeReadiness();
+  await computeRecommendation();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// READINESS COMPUTATION
+// ═══════════════════════════════════════════════════════════════
+
+async function computeReadiness() {
+  const settings = state.settings;
+  const bw = settings.bodyweightKg || 91;
+
+  // Velocity baseline: readiness test velocities
+  const readinessTestSets = state.allSets
+    .filter(s => s.setRole === "readiness_test" && s.velocityRep1 !== null)
+    .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
+  const velValues = readinessTestSets.map(s => s.velocityRep1);
+  const velR = velocityReadiness(state.todayVelocity, velValues, settings.readinessVelocityWindowN || 10);
+
+  // HRV baseline
+  const hrvMeasurements = await getMeasurementsByType("HRV");
+  const lnRmssdValues = hrvMeasurements
+    .sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""))
+    .map(m => m.valueTransformed)
+    .filter(v => v !== null && v !== undefined);
+  const todayLn = state.todayHRV ? ouraHRVtoLnRMSSD(state.todayHRV) : null;
+  const hrvR = hrvReadiness(todayLn, lnRmssdValues, settings.readinessHrvWindowN || 14);
+
+  // Vara baseline: recent top sets
+  const topSets = state.allSets
+    .filter(s => s.setRole === "top" && s.actualVx !== null)
+    .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
+  const varaR = varaReadiness(topSets, settings.readinessVaraWindowN || 5);
+
+  state.readiness = combineReadiness(velR, hrvR, varaR);
+}
+
+async function computeRecommendation() {
+  const settings = state.settings;
+  const primaryMov = state.movements.find(m => m.isPrimary);
+  state.recommendation = await recommend({
+    settings,
+    bodyweightKg: settings.bodyweightKg || 91,
+    dateISO: todayISO(),
+    mesocycle: state.mesocycle,
+    sessions: state.sessions,
+    allSets: state.allSets,
+    readiness: state.readiness,
+    primaryMovementId: primaryMov?.movementId || null,
+    dryRun: true,
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOAST NOTIFICATIONS
+// ═══════════════════════════════════════════════════════════════
+
+function showToast(message, type = "", duration = 3000) {
+  const container = document.getElementById("toast-container");
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), duration);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DATE HELPERS
+// ═══════════════════════════════════════════════════════════════
+
+function formatDate(iso) {
+  if (!iso) return "-";
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString("fi-FI", { timeZone: "Europe/Helsinki", weekday: "short", day: "numeric", month: "numeric", year: "numeric" });
+  } catch { return iso; }
+}
+
+function formatDateShort(iso) {
+  if (!iso) return "-";
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString("fi-FI", { timeZone: "Europe/Helsinki", weekday: "short", day: "numeric", month: "numeric" });
+  } catch { return iso; }
+}
+
+function dayOfWeekFi(iso) {
+  if (!iso) return "";
+  const days = ["Su", "Ma", "Ti", "Ke", "To", "Pe", "La"];
+  return days[new Date(iso).getDay()];
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RENDER
+// ═══════════════════════════════════════════════════════════════
+
+function render() {
+  const app = document.getElementById("app");
+  switch (state.view) {
+    case "dashboard": app.innerHTML = renderDashboard(); break;
+    case "workout": app.innerHTML = renderWorkout(); break;
+    case "readiness": app.innerHTML = renderReadiness(); break;
+    case "mesocycle": app.innerHTML = renderMesocycle(); break;
+    case "movements": app.innerHTML = renderMovements(); break;
+    case "history": app.innerHTML = renderHistory(); break;
+    case "trends": app.innerHTML = renderTrends(); break;
+    case "settings": app.innerHTML = renderSettingsView(); break;
+    default: app.innerHTML = renderDashboard();
+  }
+  renderNav();
+  bind();
+}
+
+function renderNav() {
+  const navItems = [
+    { id: "dashboard", icon: "🏠", label: "Koti" },
+    { id: "mesocycle", icon: "📅", label: "Sykli" },
+    { id: "movements", icon: "💪", label: "Liikkeet" },
+    { id: "history", icon: "📊", label: "Historia" },
+    { id: "settings", icon: "⚙️", label: "Asetukset" },
+  ];
+  document.getElementById("nav").innerHTML = navItems.map(n =>
+    `<button data-nav="${n.id}" class="${state.view === n.id ? 'active' : ''}">
+      <span class="icon">${n.icon}</span>${n.label}
+    </button>`
+  ).join("");
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DASHBOARD VIEW
+// ═══════════════════════════════════════════════════════════════
+
+function renderDashboard() {
+  const rec = state.recommendation;
+  const r = state.readiness;
+  const today = todayISO();
+  const weekNum = rec?.weekNum || "?";
+  const weekLabel = rec?.weekLabel || "";
+  const dayType = rec?.dayType || "heavy";
+  const mesoNum = state.mesocycle ? (state.sessions.length > 0 ? Math.ceil(state.sessions.length / 12) : 1) : 1;
+
+  // Day type labels in Finnish
+  const dayTypeLabels = { heavy: "Heavy", volume: "Volume", speed: "Speed", rest: "Lepo" };
+
+  // Readiness badge
+  const readinessClass = r.combined === "GREEN" ? "chip-green" : r.combined === "YELLOW" ? "chip-yellow" : "chip-red";
+  const readinessEmoji = r.combined === "GREEN" ? "🟢" : r.combined === "YELLOW" ? "🟡" : "🔴";
+
+  // Build program preview
+  let programHTML = "";
+  if (rec && rec.dayPlan && rec.dayPlan.slots) {
+    programHTML = rec.dayPlan.slots.map((slot, i) => {
+      const movName = slot.defaultMovementName || slot.category;
+      const loadStr = i === 0 && rec.targetExternalLoad !== null ? `+${rec.targetExternalLoad} kg` : "";
+      const setsReps = `${slot.sets}×${slot.reps}`;
+      return `<div class="flex-between" style="padding:6px 0;border-bottom:1px solid var(--border)">
+        <div><strong>${i + 1}.</strong> ${movName}</div>
+        <div style="text-align:right"><span style="font-weight:600">${setsReps}</span> ${loadStr}</div>
+      </div>`;
+    }).join("");
+  } else if (rec && rec.targetExternalLoad !== null) {
+    programHTML = `<div class="flex-between" style="padding:6px 0">
+      <div><strong>1.</strong> Lisäpainoleuanveto</div>
+      <div style="text-align:right"><span style="font-weight:600">${rec.setCount}×${rec.targetReps}</span> +${rec.targetExternalLoad} kg</div>
+    </div>`;
+  }
+
+  // Break warning
+  let breakHTML = "";
+  if (rec?.breakInfo) {
+    breakHTML = `<div class="card" style="border-color:var(--warn)">
+      <div class="text-warn" style="font-weight:600">${rec.breakInfo.message}</div>
+    </div>`;
+  }
+
+  // e1RM display
+  const e1rmExt = rec?.e1rmExternal !== null ? rec.e1rmExternal?.toFixed(1) : "-";
+  const e1rmSys = rec?.e1rmSystem !== null ? rec.e1rmSystem?.toFixed(1) : "-";
+
+  // Vara feedback
+  let varaHTML = "";
+  if (rec?.varaFeedback?.suggestion) {
+    const type = rec.varaFeedback.type === "too_easy" ? "text-ok" : "text-warn";
+    varaHTML = `<div class="muted mt ${type}">${rec.varaFeedback.suggestion}</div>`;
+  }
+
+  return `<div class="fade-in">
+    <div class="flex-between mb">
+      <div>
+        <div style="font-size:13px;color:var(--muted)">${formatDate(today)}</div>
+        <div style="font-size:20px;font-weight:700">${dayTypeLabels[dayType] || dayType}</div>
+        <div class="muted">Viikko ${weekNum} / ${weekLabel}</div>
+      </div>
+      <div class="chip ${readinessClass}">${readinessEmoji} ${r.combined || "?"}</div>
+    </div>
+
+    ${breakHTML}
+
+    <div class="card">
+      <div class="kpi-row">
+        <div class="kpi-box">
+          <div class="kpi">${e1rmExt}</div>
+          <div class="kpi-label">e1RM lisäpaino (kg)</div>
+        </div>
+        <div class="kpi-box">
+          <div class="kpi">${e1rmSys}</div>
+          <div class="kpi-label">e1RM system (kg)</div>
+        </div>
+      </div>
+      ${varaHTML}
+    </div>
+
+    <button class="btn btn-big btn-full mb" id="btn-start-workout">
+      ▶ ALOITA TREENI
+    </button>
+
+    <button class="btn btn-outline btn-full mb" id="btn-readiness" style="font-size:14px">
+      📊 Syötä readiness (HRV / velocity)
+    </button>
+
+    <div class="card">
+      <div class="card-title">Päivän ohjelma</div>
+      ${programHTML || '<div class="muted">Ei ohjelmaa — aloita mesosykli</div>'}
+    </div>
+
+    ${renderDecisionTracePreview(rec)}
+
+    ${renderWeeklyOverview()}
+  </div>`;
+}
+
+function renderDecisionTracePreview(rec) {
+  if (!rec || !rec.traces || !rec.traces.length) return "";
+  return `<div class="card">
+    <div class="accordion-header" data-toggle="trace-preview">
+      <span class="card-title" style="margin:0">Miksi tämä suositus?</span>
+      <span>▼</span>
+    </div>
+    <div class="accordion-body" id="trace-preview">
+      ${rec.traces.map(t => `<div style="padding:4px 0;border-bottom:1px solid var(--border);font-size:12px">
+        <span style="color:var(--acc)">${t.ruleId}</span>: ${t.why}
+      </div>`).join("")}
+    </div>
+  </div>`;
+}
+
+function renderWeeklyOverview() {
+  // Simplified weekly stimulus
+  const weekStart = new Date();
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
+  const weekStartISO = weekStart.toISOString().slice(0, 10);
+
+  const weekSets = state.allSets.filter(s => {
+    const session = state.sessions.find(ses => ses.sessionId === s.sessionId);
+    return session && session.dateISO >= weekStartISO;
+  });
+
+  const stimulus = weeklyStimulus(weekSets, state.movements);
+
+  return `<div class="card">
+    <div class="card-title">Viikon stimulus</div>
+    <div class="kpi-row">
+      <div class="kpi-box">
+        <div class="kpi">${stimulus.pullVolumeSets}</div>
+        <div class="kpi-label">Vetosarjat</div>
+      </div>
+      <div class="kpi-box">
+        <div class="kpi">${stimulus.heavyExposures}</div>
+        <div class="kpi-label">Heavy altistukset</div>
+      </div>
+      <div class="kpi-box">
+        <div class="kpi">${Math.round(stimulus.totalTonnageExternal)}</div>
+        <div class="kpi-label">Tonnage (kg)</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// READINESS VIEW
+// ═══════════════════════════════════════════════════════════════
+
+function renderReadiness() {
+  const r = state.readiness;
+  const ch = r.channels || {};
+
+  function channelRow(label, channel) {
+    if (!channel || channel.class === null) return `<div class="flex-between" style="padding:8px 0"><span>${label}</span><span class="dim">Ei dataa</span></div>`;
+    const dot = channel.class === "GREEN" ? "green" : channel.class === "YELLOW" ? "yellow" : "red";
+    const zStr = channel.z !== null ? `z=${channel.z.toFixed(2)}` : "";
+    return `<div class="flex-between" style="padding:8px 0;border-bottom:1px solid var(--border)">
+      <span>${label}</span>
+      <span><span class="readiness-dot ${dot}"></span> ${channel.class} ${zStr}</span>
+    </div>`;
+  }
+
+  return `<div class="fade-in">
+    <div class="section-header">Readiness</div>
+
+    <div class="card">
+      <label>HRV (Oura, ms)</label>
+      <input type="number" inputmode="decimal" id="input-hrv" value="${state.todayHRV || ""}" placeholder="esim. 45">
+      <div class="muted mt">Yön keskiarvo-HRV RMSSD millisekunteina</div>
+    </div>
+
+    <div class="card">
+      <label>Readiness-testi velocity (m/s)</label>
+      <input type="number" inputmode="decimal" step="0.01" id="input-vel" value="${state.todayVelocity || ""}" placeholder="esim. 0.53">
+      <div class="muted mt">1. repin mean velocity readiness-testistä (+40 kg × 2, max intent)</div>
+    </div>
+
+    <button class="btn btn-full mb" id="btn-save-readiness">Tallenna readiness</button>
+
+    <div class="card">
+      <div class="card-title">Kanavat</div>
+      ${channelRow("Velocity", ch.velocity)}
+      ${channelRow("HRV", ch.hrv)}
+      ${channelRow("Vara", ch.vara)}
+      <div class="flex-between mt" style="padding:8px 0;font-weight:700">
+        <span>Kokonaistila</span>
+        <span class="chip ${r.combined === 'GREEN' ? 'chip-green' : r.combined === 'YELLOW' ? 'chip-yellow' : 'chip-red'}">${r.combined || "?"}</span>
+      </div>
+    </div>
+
+    <button class="btn btn-outline btn-full" data-nav="dashboard">← Takaisin</button>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// WORKOUT VIEW
+// ═══════════════════════════════════════════════════════════════
+
+function renderWorkout() {
+  if (!state.workout) return renderWorkoutSetup();
+  return renderActiveWorkout();
+}
+
+function renderWorkoutSetup() {
+  const rec = state.recommendation;
+  const dayType = rec?.dayType || "heavy";
+  return `<div class="fade-in">
+    <div class="section-header">Treeni</div>
+    <div class="card">
+      <div style="font-size:16px;font-weight:600">${formatDate(todayISO())} — ${dayType}</div>
+      <div class="muted">Viikko ${rec?.weekNum || "?"} / ${rec?.weekLabel || ""}</div>
+    </div>
+    <button class="btn btn-big btn-full" id="btn-begin-workout">▶ ALOITA TREENI</button>
+  </div>`;
+}
+
+function renderActiveWorkout() {
+  const w = state.workout;
+  if (!w) return "";
+
+  const totalExercises = w.exercises.length;
+  const currentExIdx = w.currentExerciseIdx;
+  const exercise = w.exercises[currentExIdx];
+  if (!exercise) return renderWorkoutSummary();
+
+  const totalSets = exercise.sets.length;
+  const currentSetIdx = w.currentSetIdx;
+  const currentSet = exercise.sets[currentSetIdx];
+
+  if (!currentSet) {
+    // Move to next exercise
+    return renderWorkoutExerciseComplete(exercise);
+  }
+
+  const progressPct = ((currentExIdx * 100 + (currentSetIdx / totalSets) * 100) / totalExercises).toFixed(0);
+
+  // Load display
+  const loadStr = currentSet.loadKg !== null ? `${currentSet.loadKg} kg` : "–";
+  const isLoadIncrease = exercise.progressSuggestion === "increase";
+
+  return `<div class="fade-in">
+    <div class="flex-between mb">
+      <div class="muted">${currentExIdx + 1}/${totalExercises} liikettä</div>
+      <button class="btn btn-sm btn-outline" id="btn-end-workout">Lopeta</button>
+    </div>
+    <div class="progress"><div class="progress-fill" style="width:${progressPct}%"></div></div>
+
+    <div class="exercise-card">
+      <div class="exercise-name" id="btn-swap-exercise">${exercise.name}</div>
+      <div class="exercise-meta">
+        ${exercise.role === "primary" ? "Pääliike" : exercise.category}
+        ${isLoadIncrease ? ' <span class="text-ok">↑</span>' : ""}
+      </div>
+
+      <div style="margin-top:12px">
+        <div class="flex-between">
+          <span class="muted">Sarja ${currentSetIdx + 1}/${totalSets}</span>
+          <span class="muted">Tavoite: ${currentSet.targetReps} toistoa, V${currentSet.targetVx ?? "?"}</span>
+        </div>
+
+        <div style="text-align:center;margin:16px 0">
+          <div id="btn-edit-load" class="load-display ${isLoadIncrease ? 'load-up' : ''}">${loadStr}</div>
+          <div class="muted mt">Napauta muokataksesi painoa</div>
+        </div>
+
+        <label>Toistot</label>
+        <div class="set-btns" id="reps-btns">
+          ${[1,2,3,4,5,6,7,8,9,10].map(n =>
+            `<button class="set-btn" data-reps="${n}">${n}</button>`
+          ).join("")}
+        </div>
+
+        <label style="margin-top:12px">Vara</label>
+        <div class="set-btns" id="vara-btns">
+          ${[0,1,2,3,4,5].map(n =>
+            `<button class="set-btn set-btn-vara" data-vara="${n}">V${n}</button>`
+          ).join("")}
+        </div>
+
+        <label style="margin-top:12px">Velocity (valinnainen)</label>
+        <input type="number" inputmode="decimal" step="0.01" id="input-set-velocity" placeholder="m/s" style="max-width:120px">
+      </div>
+
+      <button class="btn btn-full mt" id="btn-next-set" disabled>→ Seuraava sarja</button>
+    </div>
+  </div>`;
+}
+
+function renderWorkoutExerciseComplete(exercise) {
+  return `<div class="fade-in">
+    <div class="card text-center">
+      <div style="font-size:24px;margin-bottom:8px">✓</div>
+      <div style="font-weight:600">${exercise.name} valmis</div>
+    </div>
+    <button class="btn btn-full" id="btn-next-exercise">Seuraava liike →</button>
+  </div>`;
+}
+
+function renderWorkoutSummary() {
+  const w = state.workout;
+  if (!w) return "";
+
+  const totalSets = w.exercises.reduce((sum, ex) => sum + ex.sets.filter(s => s.completed).length, 0);
+
+  return `<div class="fade-in">
+    <div class="card text-center">
+      <div style="font-size:48px;margin-bottom:12px">💪</div>
+      <div style="font-size:20px;font-weight:700">Treeni valmis!</div>
+      <div class="muted mt">${totalSets} sarjaa tehty</div>
+    </div>
+
+    ${w.exercises.map(ex => `<div class="card">
+      <div style="font-weight:600">${ex.name}</div>
+      ${ex.sets.filter(s => s.completed).map(s =>
+        `<div class="muted">${s.loadKg} kg × ${s.reps} @ V${s.actualVx ?? "?"} ${s.velocity ? `(${s.velocity} m/s)` : ""}</div>`
+      ).join("")}
+    </div>`).join("")}
+
+    <button class="btn btn-ok btn-full mb" id="btn-save-workout">Tallenna treeni</button>
+    <button class="btn btn-outline btn-full" id="btn-discard-workout">Hylkää</button>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MESOCYCLE VIEW
+// ═══════════════════════════════════════════════════════════════
+
+function renderMesocycle() {
+  const meso = state.mesocycle;
+  if (!meso) return `<div class="fade-in"><div class="section-header">Mesosykli</div><div class="card"><div class="muted">Ei aktiivista mesosykliä</div><button class="btn btn-full mt" id="btn-new-meso">Aloita uusi mesosykli</button></div></div>`;
+
+  const currentWeek = getMesocycleWeek(meso, todayISO());
+
+  return `<div class="fade-in">
+    <div class="section-header">Mesosykli</div>
+
+    <div class="card">
+      <div class="flex-between">
+        <div>
+          <div style="font-weight:600">Aloitus: ${formatDateShort(meso.startDateISO)}</div>
+          <div class="muted">${meso.weekCount} viikkoa</div>
+        </div>
+        <div class="chip">${currentWeek ? `Viikko ${currentWeek}` : "Päättynyt"}</div>
+      </div>
+    </div>
+
+    ${meso.weekDefs.map(w => {
+      const isCurrent = w.week === currentWeek;
+      return `<div class="card" style="${isCurrent ? 'border-color:var(--acc)' : ''}">
+        <div class="flex-between">
+          <div style="font-weight:600">Viikko ${w.week}: ${w.label}</div>
+          ${isCurrent ? '<span class="chip" style="font-size:11px">NYT</span>' : ""}
+        </div>
+        <div class="muted mt">
+          Delta: ${(w.deltaPctBase * 100).toFixed(1)}% |
+          Heavy: ${w.heavyReps} toistoa, V${w.heavyTargetVx}
+        </div>
+      </div>`;
+    }).join("")}
+
+    <div class="card">
+      <div class="card-title">Viikkosuunnitelma</div>
+      ${(meso.weekPlans || []).filter(wp => wp.week === (currentWeek || 1)).flatMap(wp => wp.days).map(d => {
+        const dayNames = { 1: "Ma", 2: "Ti", 3: "Ke", 4: "To", 5: "Pe", 6: "La", 7: "Su" };
+        return `<div style="padding:8px 0;border-bottom:1px solid var(--border)">
+          <div class="flex-between">
+            <span style="font-weight:600">${dayNames[d.dayOfWeek] || d.dayOfWeek} — ${d.dayType}</span>
+          </div>
+          <div class="muted">${d.slots.map(s => s.defaultMovementName || s.category).join(" | ")}</div>
+        </div>`;
+      }).join("") || '<div class="muted">Ei suunnitelmaa</div>'}
+    </div>
+
+    <button class="btn btn-outline btn-full mt" id="btn-new-meso">Aloita uusi mesosykli</button>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MOVEMENTS VIEW
+// ═══════════════════════════════════════════════════════════════
+
+function renderMovements() {
+  const byCategory = {};
+  state.movements.forEach(m => {
+    if (!byCategory[m.category]) byCategory[m.category] = [];
+    byCategory[m.category].push(m);
+  });
+
+  const categoryLabels = {
+    vertikaaliveto: "Vertikaaliveto", horisontaaliveto: "Horisontaaliveto",
+    hauisfleksio: "Hauisfleksio", vertikaalityöntö: "Vertikaalityöntö",
+    horisontaalityöntö: "Horisontaalityöntö", ojentajaekstensio: "Ojentajaekstensio",
+    core: "Core", alaraaja: "Alaraaja", muu: "Muu",
   };
 
-  const tabs=['Setup Wizard','Session','Plan Engine','Dashboard','Rules','Diagnostics'];
-  function loadSettings(){
-    try { return JSON.parse(localStorage.getItem(APP_KEY)) || {units:'kg',mode:'HYBRID MODE',deviceMetric:'mean',errorMargin:'conservative',primary:['Lisäpainoleuanveto'],competitionDate:''}; }
-    catch { return {units:'kg',mode:'HYBRID MODE',deviceMetric:'mean',errorMargin:'conservative',primary:['Lisäpainoleuanveto'],competitionDate:''}; }
-  }
-  function saveSettings(){ localStorage.setItem(APP_KEY,JSON.stringify(state.settings)); }
+  return `<div class="fade-in">
+    <div class="flex-between mb">
+      <div class="section-header" style="margin:0">Liikepankki</div>
+      <button class="btn btn-sm" id="btn-add-movement">+ Lisää</button>
+    </div>
 
-  function parseNum(v){
-    if(v===null||v===undefined||v==='') return null;
-    const cleaned=String(v).trim().replace(/,/g,'.').replace(/[^0-9.+-]/g,'');
-    const n=Number(cleaned); return Number.isFinite(n)?n:null;
-  }
-  const toISO=() => new Date().toISOString().slice(0,10);
-  const uid=()=> (crypto?.randomUUID ? crypto.randomUUID() : `id-${Date.now()}-${Math.random().toString(16).slice(2)}`);
-  const ln=x=>x&&x>0?Math.log(x):null;
+    ${Object.entries(byCategory).map(([cat, movs]) => `
+      <div class="card">
+        <div class="card-title">${categoryLabels[cat] || cat} ${PULL_VOLUME_CATEGORIES.has(cat) ? "✅ vetokuorma" : ""}</div>
+        ${movs.map(m => `<div class="flex-between" style="padding:6px 0;border-bottom:1px solid var(--border)">
+          <span>${m.isPrimary ? "⭐ " : ""}${m.name}</span>
+          ${!m.isPreset ? `<button class="btn btn-sm btn-outline" data-delete-mov="${m.movementId}">🗑</button>` : ""}
+        </div>`).join("")}
+      </div>
+    `).join("")}
 
-  function initTabs(){
-    const root=document.getElementById('tabs');
-    root.innerHTML='';
-    tabs.forEach(t=>{ const b=document.createElement('button'); b.textContent=t; b.className=t===state.tab?'active':''; b.onclick=()=>{state.tab=t;render();}; root.appendChild(b);});
-  }
+    <div id="add-movement-form" class="card hidden">
+      <div class="card-title">Lisää liike</div>
+      <label>Nimi</label>
+      <input id="new-mov-name" placeholder="esim. Cable lateral raise">
+      <label>Kategoria</label>
+      <select id="new-mov-category">
+        ${CATEGORIES.map(c => `<option value="${c}">${categoryLabels[c] || c}</option>`).join("")}
+      </select>
+      <button class="btn btn-full mt" id="btn-save-movement">Tallenna</button>
+    </div>
+  </div>`;
+}
 
-  function openDb(){
-    return new Promise((resolve)=>{
-      if(!('indexedDB' in window)) return resolve(null);
-      const req=indexedDB.open(DB_NAME,DB_VERSION);
-      req.onupgradeneeded=(e)=>{
-        const db=e.target.result;
-        if(!db.objectStoreNames.contains('sessions')) db.createObjectStore('sessions',{keyPath:'id'});
-        if(!db.objectStoreNames.contains('models')) db.createObjectStore('models',{keyPath:'movementVariantId'});
-      };
-      req.onsuccess=()=>resolve(req.result);
-      req.onerror=()=>resolve(null);
+// ═══════════════════════════════════════════════════════════════
+// HISTORY VIEW
+// ═══════════════════════════════════════════════════════════════
+
+function renderHistory() {
+  const recent = [...state.sessions].reverse().slice(0, 20);
+
+  return `<div class="fade-in">
+    <div class="section-header">Historia</div>
+    ${recent.length === 0 ? '<div class="card"><div class="muted">Ei treenejä vielä</div></div>' : ""}
+    ${recent.map(s => {
+      const sets = state.allSets.filter(set => set.sessionId === s.sessionId);
+      const dayType = s.plannedDayType || "-";
+      return `<div class="card">
+        <div class="flex-between">
+          <div>
+            <div style="font-weight:600">${formatDateShort(s.dateISO)}</div>
+            <div class="muted">${dayType} | ${sets.length} sarjaa</div>
+          </div>
+          <button class="btn btn-sm btn-outline" data-delete-session="${s.sessionId}">🗑</button>
+        </div>
+        ${sets.slice(0, 5).map(set => {
+          const mov = state.movements.find(m => m.movementId === set.movementId);
+          return `<div class="muted" style="padding:2px 0">${mov?.name || "?"}: ${set.externalLoadKg || 0} kg × ${set.reps || 0} V${set.actualVx ?? "?"}</div>`;
+        }).join("")}
+        ${sets.length > 5 ? `<div class="muted">...ja ${sets.length - 5} sarjaa lisää</div>` : ""}
+      </div>`;
+    }).join("")}
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TRENDS VIEW (placeholder)
+// ═══════════════════════════════════════════════════════════════
+
+function renderTrends() {
+  // Calculate e1RM trend from sessions
+  const primaryMov = state.movements.find(m => m.isPrimary);
+  const primarySets = primaryMov ? state.allSets.filter(s => s.movementId === primaryMov.movementId && s.setRole === "top") : [];
+  const bw = state.settings?.bodyweightKg || 91;
+
+  const e1rmPoints = primarySets.map(s => {
+    const vara = s.actualVx ?? 2;
+    const val = e1rmExternal(bw, s.externalLoadKg || 0, s.reps || 3, vara);
+    const session = state.sessions.find(ses => ses.sessionId === s.sessionId);
+    return { date: session?.dateISO, value: val };
+  }).filter(p => p.value !== null);
+
+  return `<div class="fade-in">
+    <div class="section-header">Trendit</div>
+    <div class="card">
+      <div class="card-title">e1RM (lisäpaino) trendi</div>
+      ${e1rmPoints.length === 0 ? '<div class="muted">Ei dataa</div>' :
+        `<table>
+          <tr><th>Pvm</th><th>e1RM (kg)</th></tr>
+          ${e1rmPoints.slice(-10).map(p => `<tr><td>${formatDateShort(p.date)}</td><td>${p.value.toFixed(1)}</td></tr>`).join("")}
+        </table>
+        <div class="muted mt">Viimeisin: ${e1rmPoints[e1rmPoints.length - 1]?.value.toFixed(1) || "-"} kg</div>`}
+    </div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SETTINGS VIEW
+// ═══════════════════════════════════════════════════════════════
+
+function renderSettingsView() {
+  const s = state.settings || {};
+  return `<div class="fade-in">
+    <div class="section-header">Asetukset</div>
+
+    <div class="card">
+      <div class="card-title">Urheilija</div>
+      <label>Kehonpaino (kg)</label>
+      <input type="number" inputmode="decimal" id="set-bw" value="${s.bodyweightKg || 91}">
+    </div>
+
+    <div class="card">
+      <div class="card-title">Kynnysarvot</div>
+      <div class="row">
+        <div>
+          <label>Max delta</label>
+          <input type="number" inputmode="decimal" step="0.01" id="set-maxdelta" value="${s.maxDelta || 0.25}">
+        </div>
+        <div>
+          <label>VL% raja</label>
+          <input type="number" inputmode="decimal" id="set-vlstop" value="${s.vlStopPercent || 20}">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Velocity ikkuna (N)</label>
+          <input type="number" id="set-velwindow" value="${s.readinessVelocityWindowN || 10}">
+        </div>
+        <div>
+          <label>HRV ikkuna (N)</label>
+          <input type="number" id="set-hrvwindow" value="${s.readinessHrvWindowN || 14}">
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-full mb" id="btn-save-settings">Tallenna asetukset</button>
+
+    <div class="card">
+      <div class="card-title">Data</div>
+      <div class="btn-group">
+        <button class="btn btn-sm btn-outline" id="btn-export-backup">📤 Backup JSON</button>
+        <button class="btn btn-sm btn-outline" id="btn-import-backup">📥 Restore JSON</button>
+      </div>
+      <input type="file" id="file-import" accept=".json,.csv" class="hidden">
+      <div class="btn-group mt">
+        <button class="btn btn-sm btn-outline" id="btn-import-csv">📄 Import CSV</button>
+        <input type="file" id="file-csv" accept=".csv" class="hidden">
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Diagnostiikka</div>
+      <div class="muted">
+        Versio: 1.0.0 | Schema: 3<br>
+        Sessioita: ${state.sessions.length} | Sarjoja: ${state.allSets.length}<br>
+        Liikkeitä: ${state.movements.length}
+      </div>
+      <button class="btn btn-sm btn-outline mt" id="btn-run-tests">🧪 Aja testit</button>
+    </div>
+
+    <button class="btn btn-danger btn-full mt" id="btn-wipe">Poista kaikki data</button>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// EVENT BINDING
+// ═══════════════════════════════════════════════════════════════
+
+function bind() {
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => document.querySelectorAll(sel);
+
+  // Navigation
+  $$("[data-nav]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.view = btn.dataset.nav;
+      render();
     });
-  }
-  function idbGetAll(store){ return new Promise((res)=>{ if(!state.db) return res(null); const tx=state.db.transaction(store,'readonly').objectStore(store).getAll(); tx.onsuccess=()=>res(tx.result); tx.onerror=()=>res(null); }); }
-  function idbPut(store,obj){ return new Promise((res)=>{ if(!state.db) return res(false); const tx=state.db.transaction(store,'readwrite').objectStore(store).put(obj); tx.onsuccess=()=>res(true); tx.onerror=()=>res(false); }); }
-  function idbDelete(store,id){ return new Promise((res)=>{ if(!state.db) return res(false); const tx=state.db.transaction(store,'readwrite').objectStore(store).delete(id); tx.onsuccess=()=>res(true); tx.onerror=()=>res(false); }); }
+  });
 
-  function fallbackLoad(){
-    try{return JSON.parse(localStorage.getItem('pullUpSessions'))||[]}catch{return[]}
-  }
-  function fallbackSave(){ localStorage.setItem('pullUpSessions',JSON.stringify(state.sessions)); }
+  // Accordion
+  $$("[data-toggle]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const target = document.getElementById(btn.dataset.toggle);
+      if (target) target.classList.toggle("open");
+    });
+  });
 
-  async function loadData(){
-    state.db=await openDb();
-    const s=await idbGetAll('sessions');
-    const m=await idbGetAll('models');
-    state.sessions=(s&&Array.isArray(s))?s:fallbackLoad();
-    if(Array.isArray(m)) state.models=Object.fromEntries(m.map(x=>[x.movementVariantId,x]));
-    migrate();
-    state.sessions=dedupeSessionsById(state.sessions);
-  }
-  function migrate(){
-    state.sessions=state.sessions.map(x=>{
-      const normalizedDate=x.dateISO||x.date||toISO();
-      const defaultMovement=x.exercise||'Lisäpainoleuanveto';
-      const base={
-        id:x.id||uid(),
-        schemaVersion:2,
-        dateISO:normalizedDate,
-        tags:Array.isArray(x.tags)?x.tags:[],
-        readiness:x.readiness??3,
-        sleepHours:x.sleepHours??null,
-        HRV_rmssd:x.HRV_rmssd??null,
-        HRV_ln_rmssd:x.HRV_ln_rmssd??ln(x.HRV_rmssd),
-        HRV_source:x.HRV_source||'manual',
-        deviceSource:x.deviceSource||'',
-        measurementTime:x.measurementTime||'',
-        aggregationLevel:x.aggregationLevel||'daily',
-        bodyweightKg:x.bodyweightKg??null,
-        notes:x.notes||'',
-      };
+  // Dashboard
+  const startBtn = $("#btn-start-workout");
+  if (startBtn) startBtn.addEventListener("click", () => { state.view = "workout"; render(); });
 
-      let normalizedSets=[];
-      if(Array.isArray(x.sets)){
-        normalizedSets=x.sets.map(set=>{
-          const movementId=set.movementId||x.exercise||'Lisäpainoleuanveto';
-          const bodyweightKg=set.bodyweightKg??x.bodyweightKg??null;
-          const externalWeightKg=set.externalWeightKg??set.weightKg??x.weight??null;
-          return {
-            id:set.id||uid(),
-            movementId,
-            movementVariantId:set.movementVariantId||`${movementId}::standard`,
-            timestamp:set.timestamp||new Date(`${normalizedDate}T12:00:00`).toISOString(),
-            externalWeightKg,
-            bodyweightKg,
-            systemWeightKg:set.systemWeightKg??((bodyweightKg??0)+(externalWeightKg??0)),
-            repsPlanned:set.repsPlanned??set.reps??x.reps??null,
-            repsDone:set.repsDone??set.reps??x.reps??null,
-            targetRIR:set.targetRIR??null,
-            actualRIR:set.actualRIR??null,
-            meanVelocity:set.meanVelocity??null,
-            peakVelocity:set.peakVelocity??null,
-            velocityMetricUsed:set.velocityMetricUsed||state.settings.deviceMetric,
-            velocityLossPercent:set.velocityLossPercent??null,
-            restSeconds:set.restSeconds??null,
-            setRole:set.setRole||'top',
-            tags:Array.isArray(set.tags)?set.tags:[]
-          };
-        });
-      } else {
-        const legacyMovement=x.exercise||defaultMovement;
-        const legacyWeight=parseNum(x.weight);
-        const legacyReps=parseNum(x.reps);
-        const legacySetCount=Math.max(0, Math.trunc(parseNum(x.sets)||0));
-        if(legacySetCount>0 && legacyReps!==null){
-          normalizedSets=Array.from({length:legacySetCount}, (_,i)=>{
-            const bodyweightKg=x.bodyweightKg??null;
-            const externalWeightKg=legacyWeight;
-            return {
-              id:uid(),
-              movementId:legacyMovement,
-              movementVariantId:`${legacyMovement}::standard`,
-              timestamp:new Date(`${normalizedDate}T12:${String(i).padStart(2,'0')}:00`).toISOString(),
-              externalWeightKg,
-              bodyweightKg,
-              systemWeightKg:(bodyweightKg??0)+(externalWeightKg??0),
-              repsPlanned:legacyReps,
-              repsDone:legacyReps,
-              targetRIR:parseNum(x.targetRIR),
-              actualRIR:parseNum(x.actualRIR),
-              meanVelocity:null,
-              peakVelocity:null,
-              velocityMetricUsed:state.settings.deviceMetric,
-              velocityLossPercent:null,
-              restSeconds:null,
-              setRole:i===0?'top':'backoff',
-              tags:[]
-            };
-          });
+  const readinessBtn = $("#btn-readiness");
+  if (readinessBtn) readinessBtn.addEventListener("click", () => { state.view = "readiness"; render(); });
+
+  // Readiness
+  const saveReadinessBtn = $("#btn-save-readiness");
+  if (saveReadinessBtn) saveReadinessBtn.addEventListener("click", async () => {
+    const hrvInput = parseNumericInput($("#input-hrv")?.value);
+    const velInput = parseNumericInput($("#input-vel")?.value);
+
+    if (hrvInput !== null) {
+      const hvr = validateHRV(hrvInput);
+      if (!hvr.valid) { showToast(hvr.error, "bad"); return; }
+      state.todayHRV = hvr.value;
+      await saveMeasurement({
+        dateISO: todayISO(), type: "HRV",
+        value: hvr.value, valueTransformed: ouraHRVtoLnRMSSD(hvr.value),
+        unit: "ms", device: "Oura",
+      });
+    }
+
+    if (velInput !== null) {
+      const vv = validateVelocity(velInput);
+      if (!vv.valid) { showToast(vv.error, "bad"); return; }
+      state.todayVelocity = vv.value;
+    }
+
+    await computeReadiness();
+    await computeRecommendation();
+    showToast("Readiness tallennettu", "ok");
+    state.view = "dashboard";
+    render();
+  });
+
+  // Workout setup
+  const beginBtn = $("#btn-begin-workout");
+  if (beginBtn) beginBtn.addEventListener("click", () => startWorkout());
+
+  // Active workout
+  bindWorkoutEvents();
+
+  // Mesocycle
+  const newMesoBtn = $("#btn-new-meso");
+  if (newMesoBtn) newMesoBtn.addEventListener("click", async () => {
+    const meso = createDefaultMesocycle(todayISO());
+    await saveMesocycle(meso);
+    state.mesocycle = meso;
+    await computeRecommendation();
+    showToast("Uusi mesosykli aloitettu", "ok");
+    render();
+  });
+
+  // Movements
+  const addMovBtn = $("#btn-add-movement");
+  if (addMovBtn) addMovBtn.addEventListener("click", () => {
+    const form = $("#add-movement-form");
+    if (form) form.classList.toggle("hidden");
+  });
+
+  const saveMovBtn = $("#btn-save-movement");
+  if (saveMovBtn) saveMovBtn.addEventListener("click", async () => {
+    const name = $("#new-mov-name")?.value?.trim();
+    const category = $("#new-mov-category")?.value;
+    if (!name) { showToast("Syötä liikkeen nimi", "bad"); return; }
+    await addMovement(name, category);
+    await refresh();
+    showToast(`${name} lisätty`, "ok");
+    render();
+  });
+
+  $$("[data-delete-mov]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("Poistetaanko liike?")) return;
+      await deleteMovement(btn.dataset.deleteMov);
+      await refresh();
+      render();
+    });
+  });
+
+  // History
+  $$("[data-delete-session]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("Poistetaanko treeni?")) return;
+      await deleteSession(btn.dataset.deleteSession);
+      await refresh();
+      render();
+    });
+  });
+
+  // Settings
+  const saveSettingsBtn = $("#btn-save-settings");
+  if (saveSettingsBtn) saveSettingsBtn.addEventListener("click", async () => {
+    const bw = parseNumericInput($("#set-bw")?.value);
+    const bwValid = validateBodyweight(bw);
+    if (bw !== null && !bwValid.valid) { showToast(bwValid.error, "bad"); return; }
+
+    state.settings.bodyweightKg = bw || 91;
+    state.settings.maxDelta = parseNumericInput($("#set-maxdelta")?.value) || 0.25;
+    state.settings.vlStopPercent = parseNumericInput($("#set-vlstop")?.value) || 20;
+    state.settings.readinessVelocityWindowN = parseNumericInput($("#set-velwindow")?.value) || 10;
+    state.settings.readinessHrvWindowN = parseNumericInput($("#set-hrvwindow")?.value) || 14;
+    await saveSettings(state.settings);
+    await computeRecommendation();
+    showToast("Asetukset tallennettu", "ok");
+    render();
+  });
+
+  // Backup
+  const exportBtn = $("#btn-export-backup");
+  if (exportBtn) exportBtn.addEventListener("click", async () => {
+    const data = await exportFullBackup();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `leve-coach-backup-${todayISO()}.json`;
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    showToast("Backup ladattu", "ok");
+  });
+
+  const importBtn = $("#btn-import-backup");
+  if (importBtn) importBtn.addEventListener("click", () => $("#file-import")?.click());
+
+  const fileInput = $("#file-import");
+  if (fileInput) fileInput.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      await importFullBackup(data);
+      await refresh();
+      showToast("Restore valmis", "ok");
+      render();
+    } catch (err) {
+      showToast("Import epäonnistui: " + err.message, "bad");
+    }
+  });
+
+  // CSV import
+  const csvBtn = $("#btn-import-csv");
+  if (csvBtn) csvBtn.addEventListener("click", () => $("#file-csv")?.click());
+
+  const csvInput = $("#file-csv");
+  if (csvInput) csvInput.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      // Simple auto-mapping: expects columns: date, movement, weight, reps, sets, vara
+      const result = await importHistoricalCSV(text, {
+        date: 0, movement: 1, weight: 2, reps: 3, sets: 4, vara: 5,
+      });
+      await refresh();
+      showToast(`Import: ${result.sessionsImported} sessiota, ${result.setsImported} sarjaa`, "ok");
+      render();
+    } catch (err) {
+      showToast("CSV import epäonnistui: " + err.message, "bad");
+    }
+  });
+
+  // Wipe
+  const wipeBtn = $("#btn-wipe");
+  if (wipeBtn) wipeBtn.addEventListener("click", async () => {
+    if (!confirm("Poistetaanko kaikki data pysyvästi?")) return;
+    if (!confirm("Oletko varma? Tätä ei voi perua.")) return;
+    await importFullBackup({}); // Clears everything
+    await refresh();
+    showToast("Data poistettu", "ok");
+    render();
+  });
+
+  // Tests
+  const testBtn = $("#btn-run-tests");
+  if (testBtn) testBtn.addEventListener("click", () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("test", "1");
+    window.location.href = url.toString();
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// WORKOUT ENGINE
+// ═══════════════════════════════════════════════════════════════
+
+async function startWorkout() {
+  const rec = state.recommendation;
+  const bw = state.settings?.bodyweightKg || 91;
+  const exercises = [];
+
+  // Build exercises from day plan
+  if (rec?.dayPlan?.slots) {
+    for (const slot of rec.dayPlan.slots) {
+      const mov = state.movements.find(m => m.name === slot.defaultMovementName);
+      const movId = mov?.movementId || null;
+      const isPrimary = slot.role === "primary";
+
+      let loadKg;
+      if (isPrimary && rec.targetExternalLoad !== null) {
+        loadKg = rec.targetExternalLoad;
+      } else if (mov) {
+        // Get movement progress for accessory
+        const progress = await getMovementProgress(movId);
+        if (progress?.suggestedLoadKg) {
+          loadKg = progress.suggestedLoadKg;
+        } else if (progress?.lastLoadKg) {
+          loadKg = progress.lastLoadKg;
+        } else {
+          loadKg = null; // New movement — user will enter
         }
+      } else {
+        loadKg = null;
       }
 
-      return {...base, sets:normalizedSets};
+      const progressInfo = mov ? await getMovementProgress(movId) : null;
+      const progressSuggestion = progressInfo?.suggestedAction || "hold";
+
+      exercises.push({
+        movementId: movId,
+        name: slot.defaultMovementName || slot.category,
+        category: slot.category,
+        role: slot.role,
+        loadKg,
+        progressSuggestion,
+        sets: Array.from({ length: slot.sets }, (_, i) => ({
+          idx: i,
+          targetReps: slot.reps,
+          targetVx: slot.targetVx,
+          loadKg,
+          reps: null,
+          actualVx: null,
+          velocity: null,
+          completed: false,
+        })),
+      });
+    }
+  } else {
+    // Fallback: just primary movement
+    exercises.push({
+      movementId: null,
+      name: "Lisäpainoleuanveto",
+      category: "vertikaaliveto",
+      role: "primary",
+      loadKg: rec?.targetExternalLoad,
+      progressSuggestion: "hold",
+      sets: Array.from({ length: rec?.setCount || 3 }, (_, i) => ({
+        idx: i,
+        targetReps: rec?.targetReps || 3,
+        targetVx: rec?.targetVx || 2,
+        loadKg: rec?.targetExternalLoad,
+        reps: null,
+        actualVx: null,
+        velocity: null,
+        completed: false,
+      })),
     });
   }
 
-  function isPullUpMovement(movement){
-    return movement==='Lisäpainoleuanveto' || movement==='Leuanveto';
-  }
+  state.workout = {
+    sessionId: uid(),
+    dayType: rec?.dayType || "heavy",
+    exercises,
+    currentExerciseIdx: 0,
+    currentSetIdx: 0,
+    startedAt: new Date().toISOString(),
+  };
 
-  function getAllSetsSorted(){
-    return state.sessions
-      .slice()
-      .sort((a,b)=>String(a.dateISO).localeCompare(String(b.dateISO)))
-      .flatMap(session => (Array.isArray(session.sets)?session.sets:[])
-        .slice()
-        .sort((a,b)=>String(a.timestamp||'').localeCompare(String(b.timestamp||'')))
-        .map(set => ({...set, dateISO: session.dateISO}))
-      );
-  }
+  render();
+}
 
-  function e1RMExternal(set){
-    const reps=set.repsDone;
-    const load=set.externalWeightKg;
-    if(!(reps>=1&&reps<=10&&load!==null&&load!==undefined&&load>=0)) return {value:null,confidence:'low'};
-    const rir=(set.actualRIR??set.targetRIR??2);
-    return {value:load*(1+(reps+rir)/30),confidence:reps>8?'low':'medium'};
-  }
+function bindWorkoutEvents() {
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => document.querySelectorAll(sel);
+  const w = state.workout;
+  if (!w) return;
 
+  let selectedReps = null;
+  let selectedVara = null;
 
-
-  function e1RMSystem(set){
-    const reps=set.repsDone, load=set.systemWeightKg ?? ((set.bodyweightKg||0)+(set.externalWeightKg||0));
-    if(!(reps>=1&&reps<=10&&load>0)) return {value:null,confidence:'low'};
-    const rir=(set.actualRIR??set.targetRIR??2); // Epley-RIR extension
-    const value=load*(1+(reps+rir)/30);
-    let c='medium'; if(set.meanVelocity||set.peakVelocity) c='high'; if(reps>8) c='low';
-    return {value,confidence:c};
-  }
-
-  function robustRegression(points){
-    if(points.length<3) return null;
-    const ys=points.map(p=>p.v), med=median(ys), madVal=mad(ys);
-    const filtered=points.filter(p=>madVal===0||Math.abs((p.v-med)/(1.4826*madVal))<3.5);
-    const n=filtered.length; if(n<3) return null;
-    const sx=sum(filtered.map(p=>p.w)), sy=sum(filtered.map(p=>p.v)), sxx=sum(filtered.map(p=>p.w*p.w)), sxy=sum(filtered.map(p=>p.w*p.v));
-    const denom=n*sxx-sx*sx; if(denom===0) return null;
-    const b=(n*sxy-sx*sy)/denom, a=(sy-b*sx)/n;
-    const yhat=filtered.map(p=>a+b*p.w), r2=rSquared(filtered.map(p=>p.v), yhat);
-    const outlierRate=1-(filtered.length/points.length);
-    return {a,b,r2,n:filtered.length,outlierRate,lastUpdatedISO:new Date().toISOString(),SEE_percent:see(filtered,yhat),flags:r2<0.4?['LOW_R2']:[]};
-  }
-
-  function updateModels(){
-    const byVar={};
-    state.sessions.forEach(s=>s.sets.forEach(set=>{
-      const v=set.meanVelocity??set.peakVelocity;
-      if(!v||!set.movementVariantId||!set.systemWeightKg) return;
-      (byVar[set.movementVariantId]||(byVar[set.movementVariantId]=[])).push({w:set.systemWeightKg,v});
-    }));
-    const qualities=[];
-    Object.entries(byVar).forEach(([variant,pts])=>{
-      const reg=robustRegression(pts); if(!reg) return;
-      const movementId=variant.split('::')[0]; const model={movementVariantId:variant,movementId,deviceProfileId:'default',velocityMetricUsedDefault:state.settings.deviceMetric,regression:{a:reg.a,b:reg.b,r2:reg.r2,n:reg.n,lastUpdatedISO:reg.lastUpdatedISO},method:'multi-point',calibration:{requiredVelocitySpread:0.5,minHighLoadPercent:0.85,lastCalibrationISO:reg.lastUpdatedISO},uncertainty:{SEE_percent:reg.SEE_percent,SEE_kg_est:null},dataQuality:{outlierRate:reg.outlierRate,lastNPoints:reg.n,flags:reg.flags}};
-      state.models[variant]=model; idbPut('models',model);
-      qualities.push(reg.outlierRate);
+  // Reps buttons
+  $$("[data-reps]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      $$("[data-reps]").forEach(b => b.classList.remove("selected"));
+      btn.classList.add("selected");
+      selectedReps = parseInt(btn.dataset.reps);
+      checkNextSetEnabled();
     });
-    state.quality={flags:qualities.some(x=>x>0.25)?['DATA TOO NOISY']:[],outlierRate:qualities[0]||0,lastN:Object.keys(state.models).length};
-  }
+  });
 
-  function recommend(movement='Lisäpainoleuanveto'){
-    const sets=getAllSetsSorted().filter(s=>s.movementId===movement).slice(-12);
-    if(!sets.length) return {action:'hold',deltaPct:0,confidence:'low',why:['Ei riittävästi dataa']};
-    const recent=sets.slice(-4);
-    const rirErr=avg(recent.map(s=>((s.actualRIR??s.targetRIR??2)-(s.targetRIR??2))));
-    const trendSeries=recent.map(s=>isPullUpMovement(movement)?e1RMExternal(s).value:e1RMSystem(s).value).filter(Boolean);
-    const eTrend=trend(trendSeries);
-    const lastSession=state.sessions[state.sessions.length-1]||{};
-    const sleep=lastSession.sleepHours??7, ready=lastSession.readiness??3;
-    const hrvCount=state.sessions.filter(s=>s.HRV_ln_rmssd).length;
-    let deltaPct=0, action='hold'; const why=[];
-    if(rirErr>0.8&&eTrend>=0){deltaPct=2.5;action='progressio';why.push('Sarjat tuntuivat kevyiltä (RIR)');}
-    if(rirErr<-0.8||eTrend<0){deltaPct=-2.5;action='deload';why.push('RIR-virhe tai e1RM-trendi negatiivinen');}
-    if(sleep<6||ready<=2){deltaPct=Math.min(deltaPct,0); if(deltaPct===0) action='hold'; why.push('Uni/readiness rajoittaa aggressiivisuutta');}
-    if(hrvCount>=3){
-      const h=state.sessions.map(s=>s.HRV_ln_rmssd).filter(Boolean).slice(-7);
-      const mean=avg(h), sd=std(h); const today=h[h.length-1];
-      if(today<mean-0.5*sd){deltaPct=Math.min(deltaPct,0);why.push('HRV trendi SWC-alueen alapuolella → cap')}
-    } else { why.push('HRV alle 3 mittausta/vko: ei käytetty päätökseen') }
-
-    if(recent.length<=2){
-      deltaPct=deltaPct/2;
-      if(deltaPct!==0) why.push('Vain 1–2 tuoretta havaintoa → varovainen puolitus')
-    }
-
-    deltaPct=Math.max(-5,Math.min(5,deltaPct));
-    const model=Object.values(state.models).find(m=>m.movementId===movement);
-    let confidence='medium';
-    if(!model||model.regression.r2<0.5||model.uncertainty.SEE_percent>12) { confidence='low'; if(deltaPct!==0) deltaPct=deltaPct/2; why.push('Mallin epävarmuus korkea → pienempi muutos'); }
-    return {action,deltaPct,confidence,why};
-  }
-
-  function solveLoad(goal='strength', movement='Lisäpainoleuanveto', reps=3, targetRIR=2){
-    const sets=getAllSetsSorted().filter(s=>s.movementId===movement);
-    const last=sets[sets.length-1];
-    if(!last) return {load:null,explain:['Ei historiallista settiä'],confidence:'low'};
-    const rec=recommend(movement);
-    const base=(last.externalWeightKg??0); const suggested=Math.max(0,base*(1+rec.deltaPct/100));
-    const vlCap=goal==='speed'?8:goal==='volume'?18:12;
-    return {load:+suggested.toFixed(2),external:+suggested.toFixed(2),expectedVelocity:last.meanVelocity?[Math.max(0,last.meanVelocity*0.95).toFixed(2), (last.meanVelocity*1.05).toFixed(2)]:null,stop:`Lopeta kun VL > ${vlCap}% tai actualRIR <= 0`,confidence:rec.confidence,explain:[`Pohja: viimeisin kuorma ${base} kg`,`Muutos: ${rec.deltaPct}% (${rec.action})`,...rec.why]};
-  }
-
-  function parseBulk(text, sessionMeta){
-    const lines=text.split(/\n+/).map(x=>x.trim()).filter(Boolean);
-    const out=[];
-    for(const lineRaw of lines){
-      const line=lineRaw.replace(/×/g,'x');
-      const lower=line.toLowerCase();
-      const aliasHit=Object.entries(MOVEMENT_ALIASES).find(([alias])=>lower.includes(alias));
-      const movement=(aliasHit?.[1]||MOVEMENTS.find(m=>lower.includes(m.toLowerCase()))||sessionMeta.defaultMovement||'Lisäpainoleuanveto');
-      const rirMatch=line.match(/@?RIR\s*([0-9.,]+)/i); const rir=parseNum(rirMatch&&rirMatch[1]);
-      const vMatch=line.match(/(?:v|V)([0-9.,]+)/); const vel=parseNum(vMatch&&vMatch[1]);
-      const vlMatch=line.match(/vl\s*([0-9.,]+)%/i); const vl=parseNum(vlMatch&&vlMatch[1]);
-      const restMatch=line.match(/r\s*(\d+)/i); const rest=parseNum(restMatch&&restMatch[1]);
-      if(/(\d+[.,]?\d*)\s*x\s*(\d+)\s*x\s*(\d+[.,]?\d*)/.test(line)){ // 3x6x77.5
-        const [,sets,reps,weight]=line.match(/(\d+[.,]?\d*)\s*x\s*(\d+)\s*x\s*(\d+[.,]?\d*)/);
-        for(let i=0;i<parseInt(sets,10);i++) out.push(makeSet(movement,parseNum(weight),parseNum(reps),rir,vel,vl,rest,sessionMeta));
-        continue;
-      }
-      if(/:\s*([\d,\s]+)/.test(line)){ // +50: 5,4,4
-        const m=line.match(/([+\-]?\d+[.,]?\d*)\s*:\s*([\d,\s]+)/);
-        if(m){ const wt=parseNum(m[1]); m[2].split(',').map(x=>parseNum(x)).filter(Boolean).forEach(r=>out.push(makeSet(movement,wt,r,rir,vel,vl,rest,sessionMeta))); continue; }
-      }
-      const single=line.match(/([+\-]?\d+[.,]?\d*)\s*x\s*(\d+)/); // 75x6
-      if(single){ out.push(makeSet(movement,parseNum(single[1]),parseNum(single[2]),rir,vel,vl,rest,sessionMeta)); continue; }
-    }
-    return out;
-  }
-
-  function makeSet(movement,extWeight,reps,rir,vel,vl,rest,meta){
-    const bw=parseNum(meta.bodyweightKg);
-    return {id:uid(),movementId:movement,movementVariantId:`${movement}::standard`,timestamp:new Date().toISOString(),externalWeightKg:extWeight,bodyweightKg:bw,systemWeightKg:(bw||0)+(extWeight||0),repsPlanned:reps,repsDone:reps,targetRIR:meta.targetRIR??rir,actualRIR:rir,meanVelocity:state.settings.deviceMetric==='mean'?vel:null,peakVelocity:state.settings.deviceMetric==='peak'?vel:null,velocityMetricUsed:state.settings.deviceMetric,velocityLossPercent:vl,restSeconds:rest,setRole:'top',tags:meta.tags||[]};
-  }
-
-  function qualityGate(session){
-    const sets=session.sets||[]; let rejected=0;
-    const usable=sets.filter(s=>{
-      if(!s.movementVariantId){rejected++;return false;}
-      if(state.settings.mode==='SENSOR MODE' && !(s.meanVelocity||s.peakVelocity)){rejected++;return false;}
-      return true;
+  // Vara buttons
+  $$("[data-vara]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      $$("[data-vara]").forEach(b => b.classList.remove("selected"));
+      btn.classList.add("selected");
+      selectedVara = parseInt(btn.dataset.vara);
+      checkNextSetEnabled();
     });
-    const vs=usable.map(s=>s.meanVelocity??s.peakVelocity).filter(Boolean);
-    if(vs.length>=4){
-      const m=median(vs), md=mad(vs);
-      const filtered=usable.filter(s=>{const v=s.meanVelocity??s.peakVelocity; if(!v||md===0) return true; const z=Math.abs((v-m)/(1.4826*md)); if(z>3.5){rejected++;return false;} return true;});
-      session.sets=filtered;
-    } else session.sets=usable;
-    const rate=sets.length?rejected/sets.length:0;
-    return {rate,flag:rate>0.25?'DATA TOO NOISY':''};
+  });
+
+  function checkNextSetEnabled() {
+    const nextBtn = $("#btn-next-set");
+    if (nextBtn) nextBtn.disabled = !(selectedReps !== null && selectedVara !== null);
   }
 
-  async function saveSession(session){
-    const q=qualityGate(session); if(q.flag) alert('DATA TOO NOISY: siirry konservatiiviseen RIR-ohjaukseen.');
-    state.sessions.push(session);
-    if(!(await idbPut('sessions',session))) fallbackSave();
-    updateModels(); render();
-  }
-
-  function renderSetup(){
-    return `<div class="grid"><div class="card"><h2>Setup Wizard</h2>
-      <label>Nimi<input id="athleteName" value="${state.settings.athleteName||''}"></label>
-      <label>Treenipäivät/viikko<input id="days" value="${state.settings.days||4}" type="number"></label>
-      <label>Kesto / treeni (min)<input id="dur" value="${state.settings.duration||75}" type="number"></label>
-      <label>Mode<select id="mode"><option>SENSOR MODE</option><option>HYBRID MODE</option><option>NO SENSOR MODE</option></select></label>
-      <label>Velocity-metriikka<select id="metric"><option value="mean">mean</option><option value="peak">peak</option></select></label>
-      <label>Kilpailupäivä (valinnainen)<input id="comp" type="date" value="${state.settings.competitionDate||''}"></label>
-      <label>Primary liftit (pilkuilla)<input id="primary" value="${(state.settings.primary||PRIMARY_MOVEMENTS).join(', ')}"></label>
-      <button class="btn" id="saveSetup">Tallenna setup</button>
-      <p class="muted">Schema-versionointi + migrate käytössä (taaksepäin yhteensopiva).</p></div>
-      <div class="card"><h2>Demo ja datahallinta</h2>
-      <button class="btn" id="loadDemo">Load demo (1–2 viikkoa)</button>
-      <button class="btn" id="exportJson">Export JSON (täysi)</button>
-      <button class="btn" id="exportCsv">Export CSV (setit)</button>
-      <label>Import JSON/CSV<input id="importFile" type="file"></label>
-      <button class="btn danger" id="wipe">Poista kaikki data (GDPR)</button>
-      <p class="muted">Dataminimointi: tallennetaan vain suoritus- ja readiness-signaalit.</p></div></div>`;
-  }
-
-  function renderSession(){
-    const r=recommend(state.settings.primary?.[0]||'Lisäpainoleuanveto');
-    const s=solveLoad('strength',state.settings.primary?.[0]||'Lisäpainoleuanveto',3,2);
-    return `<div class="grid"><div class="card"><h2>Session Screen (keyboard-first)</h2>
-      <div class="row3"><label>Päivä<input id="dateISO" type="date" value="${toISO()}"></label>
-      <label>Bodyweight kg<input id="bw" placeholder="esim 82,4"></label>
-      <label>Readiness 1-5<input id="ready" type="number" min="1" max="5" value="3"></label></div>
-      <div class="row3"><label>Sleep h<input id="sleep" type="number" step="0.1" value="7"></label>
-      <label>HRV RMSSD<input id="hrv" placeholder="optional"></label>
-      <label>Liike<select id="defaultMovement">${MOVEMENTS.map(m=>`<option>${m}</option>`).join('')}</select></label></div>
-      <label>Bulk parser<textarea id="bulk" placeholder="leuat +60x3 @RIR2 v0.32 vl12% r180\n92,5x2 V0.31\n3x6x75\nleuat +50: 5,4,4 @RIR2"></textarea></label>
-      <div class="row"><label>Target RIR<input id="targetRIR" value="2"></label><label>Tagit (pilkuilla)<input id="tags" placeholder="strict,belt"></label></div>
-      <label>Muistiinpanot<textarea id="notes"></textarea></label>
-      <button class="btn" id="saveSession">Tallenna sessio (Enter)</button>
-      <p class="muted">Hard guard: kuormamuutos max ±5% per päätösaskel.</p></div>
-      <div class="card"><h2>Deterministinen suositus</h2>
-        <p><b>Toiminto:</b> ${r.action} (${r.deltaPct>0?'+':''}${r.deltaPct}%) · <b>Confidence:</b> ${r.confidence}</p>
-        <p><b>Ehdotettu lisäpaino:</b> ${s.load??'-'} kg</p>
-        <p><b>Stop rule:</b> ${s.stop||'-'}</p>
-        <ul>${(s.explain||[]).map(x=>`<li>${x}</li>`).join('')}</ul>
-        <p class="warn">HRV ei tee päätöstä yksinään; se vain rajoittaa aggressiivisuutta.</p>
-      </div></div>`;
-  }
-
-  function renderPlan(){
-    const comp=state.settings.competitionDate?new Date(state.settings.competitionDate):null;
-    const days=comp?Math.max(0,Math.floor((comp-new Date())/86400000)):null;
-    const taper=comp?`Ehdotus: 1–3 viikon taper, volyymi -40…-60%, intensiteetti lähellä normaalia, viimeinen raskas altistus ~7–14 pv ennen.`:'Syötä kilpailupäivä Setupissa.';
-    return `<div class="grid"><div class="card"><h2>Microcycle / Mesocycle</h2>
-      <p>Valitse per pääliike 1–3 altistusta: heavy / medium / technique-speed.</p>
-      <table><tr><th>Liike</th><th>Heavy</th><th>Medium</th><th>Technique</th></tr>
-      ${(state.settings.primary||PRIMARY_MOVEMENTS).map(m=>`<tr><td>${m}</td><td>1</td><td>1</td><td>1</td></tr>`).join('')}</table>
-      <p class="muted">Mesocycle 4–8 viikkoa + sisäänrakennettu deload viikolla 4/8 trendien mukaan.</p></div>
-      <div class="card"><h2>Peaking / Taper</h2>
-      <p>Kisaan: ${days===null?'-':days+' päivää'}</p><p>${taper}</p></div></div>`;
-  }
-
-  function renderDashboard(){
-    const sessions=state.sessions.slice().sort((a,b)=>a.dateISO.localeCompare(b.dateISO));
-    const allSets=getAllSetsSorted(); const recent=sessions.slice(-8).reverse();
-    const eTrend=allSets.map(s=>{
-      const metric=isPullUpMovement(s.movementId)?e1RMExternal(s):e1RMSystem(s);
-      return {d:s.dateISO,m:s.movementId,e:metric.value,c:metric.confidence};
-    }).filter(x=>x.e);
-    const weekly={}; allSets.forEach(s=>{const w=s.dateISO.slice(0,7); weekly[w]=(weekly[w]||0)+((s.repsDone||0)*(s.systemWeightKg||0));});
-    const hrv=sessions.map(s=>s.HRV_ln_rmssd).filter(Boolean); const hrvAvg=rolling(hrv,7).slice(-1)[0];
-    const acwr=acwrLoad(allSets);
-    return `<div class="grid"><div class="card"><h2>Recent sessions</h2>
-      <table><tr><th>Pvm</th><th>Setit</th><th>Readiness</th><th>Toiminnot</th></tr>${recent.map(s=>`<tr><td>${s.dateISO}</td><td>${s.sets.length}</td><td>${s.readiness||'-'}</td><td><button class="btn del" data-id="${s.id}">Delete</button></td></tr>`).join('')}</table>
-      <p class="muted">ACWR-varoitus: ${acwr.warn?'<span class="warn">Kyllä</span>':'Ei'} (UI warning, ei loukkaantumisennuste).</p>
-      </div>
-      <div class="card"><h2>Trendit</h2>
-        <p>e1RM datapisteet: ${eTrend.length} · viimeisin: ${eTrend.at(-1)?.e?.toFixed(1)||'-'} kg</p>
-        <p>Lisäpainoleuanveto e1RM (external): ${eTrend.filter(x=>x.m==='Lisäpainoleuanveto').at(-1)?.e?.toFixed(1)||'-'} kg</p>
-        <p>Viikkotonnage: ${Object.entries(weekly).slice(-4).map(([k,v])=>`${k}: ${v.toFixed(0)}`).join(' | ')||'-'}</p>
-        <p>HRV 7d rolling lnRMSSD: ${hrvAvg?hrvAvg.toFixed(3):'-'}</p>
-      </div>
-      <div class="card"><h2>Model health</h2>
-      ${Object.values(state.models).map(m=>`<div><b>${m.movementVariantId}</b> r²=${m.regression.r2.toFixed(2)} n=${m.regression.n} SEE%=${m.uncertainty.SEE_percent.toFixed(1)}</div>`).join('')||'<p>Ei mallia vielä.</p>'}
-      </div></div>`;
-  }
-
-  function renderRules(){
-    return `<div class="card"><h2>Rules (läpinäkyvyys)</h2><ol>
-      <li>e1RM näytetään vain 1–10 toiston seteistä (muuten low confidence).</li>
-      <li>Sensor-mode vaatii velocity-datan, muuten datapiste hylätään.</li>
-      <li>Outlierit poistetaan MAD-menetelmällä ennen regressiopäivitystä.</li>
-      <li>Kuormamuutos max ±5% per päätösaskel (single-observation guard: 1–2 havaintoa puolittaa muutoksen).</li>
-      <li>HRV/uni/readiness voivat vain rajoittaa aggressiivisuutta, eivät pakottaa aggressiiviseen nousuun.</li>
-      <li>Samat syötteet → sama suositus (deterministinen logiikka, ei satunnaisuutta).</li>
-    </ol></div>`;
-  }
-
-  function renderDiagnostics(){
-    return `<div class="grid"><div class="card"><h2>Data quality</h2>
-      <p>Outlier rate: ${(state.quality.outlierRate*100).toFixed(1)}%</p><p>Mallien määrä: ${state.quality.lastN}</p>
-      <p class="${state.quality.flags.length?'warn':'ok'}">${state.quality.flags.join(', ')||'OK'}</p></div>
-      <div class="card"><h2>Storage</h2>
-      <p>IndexedDB: ${state.db?'käytössä':'ei saatavilla (fallback localStorage)'}</p>
-      <p>Offline-first: single-file toimii ilman verkkoa kun avattu selaimessa.</p>
-      </div></div>`;
-  }
-
-  function bind(){
-    const v=document.getElementById('view');
-    if(state.tab==='Setup Wizard'){
-      byId('mode').value=state.settings.mode; byId('metric').value=state.settings.deviceMetric;
-      byId('saveSetup').onclick=()=>{ state.settings={...state.settings,athleteName:byId('athleteName').value,days:parseNum(byId('days').value),duration:parseNum(byId('dur').value),mode:byId('mode').value,deviceMetric:byId('metric').value,competitionDate:byId('comp').value,primary:byId('primary').value.split(',').map(x=>x.trim()).filter(Boolean)}; saveSettings(); alert('Tallennettu'); render(); };
-      byId('loadDemo').onclick=loadDemo;
-      byId('exportJson').onclick=()=>download('coach-full-export.json',JSON.stringify({settings:state.settings,sessions:state.sessions,models:state.models},null,2),'application/json');
-      byId('exportCsv').onclick=()=>{const rows=['dateISO,movement,variant,externalWeightKg,systemWeightKg,repsDone,targetRIR,actualRIR,meanVelocity,peakVelocity,velocityLossPercent,restSeconds']; state.sessions.forEach(s=>s.sets.forEach(x=>rows.push([s.dateISO,x.movementId,x.movementVariantId,x.externalWeightKg,x.systemWeightKg,x.repsDone,x.targetRIR,x.actualRIR,x.meanVelocity,x.peakVelocity,x.velocityLossPercent,x.restSeconds].join(',')))); download('coach-sets.csv',rows.join('\n'),'text/csv'); };
-      byId('importFile').onchange=(e)=>importFile(e.target.files[0]);
-      byId('wipe').onclick=async()=>{ if(!confirm('Poistetaanko kaikki data?')) return; state.sessions=[]; state.models={}; localStorage.removeItem('pullUpSessions'); localStorage.removeItem(APP_KEY); if(state.db){const tx=state.db.transaction(['sessions','models'],'readwrite'); tx.objectStore('sessions').clear(); tx.objectStore('models').clear();} render(); };
-    }
-    if(state.tab==='Session'){
-      const submit=()=>{
-        const meta={bodyweightKg:byId('bw').value,targetRIR:parseNum(byId('targetRIR').value),tags:byId('tags').value.split(',').map(x=>x.trim()).filter(Boolean),defaultMovement:byId('defaultMovement').value};
-        const sets=parseBulk(byId('bulk').value,meta); if(!sets.length) return alert('Parseri ei löytänyt settejä.');
-        if((meta.defaultMovement==='Leuanveto' || meta.defaultMovement==='Lisäpainoleuanveto') && !parseNum(meta.bodyweightKg)) alert('Varoitus: kehonpaino puuttuu pull-up -päivänä.');
-        const hrv=parseNum(byId('hrv').value);
-        const session={id:uid(),schemaVersion:2,dateISO:byId('dateISO').value||toISO(),tags:meta.tags,readiness:parseNum(byId('ready').value)||3,sleepHours:parseNum(byId('sleep').value),HRV_rmssd:hrv,HRV_ln_rmssd:ln(hrv),HRV_source:'manual',deviceSource:'manual',measurementTime:'morning',aggregationLevel:'daily',bodyweightKg:parseNum(meta.bodyweightKg),notes:byId('notes').value,sets};
-        saveSession(session);
-      };
-      byId('saveSession').onclick=submit; v.onkeydown=(e)=>{if(e.key==='Enter'&&e.ctrlKey) submit();};
-    }
-    if(state.tab==='Dashboard'){
-      v.querySelectorAll('.del').forEach(b=>b.onclick=async()=>{const id=b.dataset.id; state.sessions=state.sessions.filter(s=>s.id!==id); await idbDelete('sessions',id); fallbackSave(); render();});
-    }
-  }
-
-
-  function dedupeSessionsById(list){
-    const seen=new Map();
-    list.forEach(s=>{ if(!s?.id) s.id=uid(); seen.set(s.id,s); });
-    return Array.from(seen.values());
-  }
-
-  function render(){
-    initTabs();
-    const v=document.getElementById('view');
-    v.innerHTML= state.tab==='Setup Wizard'?renderSetup():state.tab==='Session'?renderSession():state.tab==='Plan Engine'?renderPlan():state.tab==='Dashboard'?renderDashboard():state.tab==='Rules'?renderRules():renderDiagnostics();
-    bind();
-  }
-
-  async function loadDemo(){
-    const removedDemoIds=state.sessions.filter(s=>(s.tags||[]).includes('demo')).map(s=>s.id);
-    state.sessions=state.sessions.filter(s=>!(s.tags||[]).includes('demo'));
-    for(const id of removedDemoIds) await idbDelete('sessions',id);
-    const base=new Date(); const mk=(d,mv,w,r,rir,v)=>({id:uid(),movementId:mv,movementVariantId:`${mv}::standard`,timestamp:new Date(base.getTime()+d*86400000).toISOString(),externalWeightKg:w,bodyweightKg:82,systemWeightKg:82+w,repsPlanned:r,repsDone:r,targetRIR:rir,actualRIR:rir,meanVelocity:v,peakVelocity:null,velocityMetricUsed:'mean',velocityLossPercent:12,restSeconds:180,setRole:'top',tags:['strict']});
-    const days=[-10,-8,-6,-3,-1];
-    for(const d of days){
-      const session={id:uid(),schemaVersion:2,dateISO:new Date(base.getTime()+d*86400000).toISOString().slice(0,10),tags:['demo'],readiness:3+(d%2===0?1:0),sleepHours:7.2,HRV_rmssd:48+d*0.2,HRV_ln_rmssd:ln(48+d*0.2),HRV_source:'manual',deviceSource:'Polar',measurementTime:'06:30',aggregationLevel:'daily',bodyweightKg:82,notes:'demo',sets:[mk(d,'Lisäpainoleuanveto',50+d*0.3,3,2,0.36),mk(d,'Penkkipunnerrus',95+d*0.2,4,2,0.29)]};
-      state.sessions.push(session); await idbPut('sessions',session);
-    }
-    updateModels(); render();
-  }
-
-  function importFile(file){
-    if(!file) return; const r=new FileReader();
-    r.onload=async()=>{
-      const txt=r.result;
-      if(file.name.endsWith('.json')){
-        try{
-          const data=JSON.parse(txt);
-          const incomingRaw=Array.isArray(data.sessions)?data.sessions:(Array.isArray(data)?data:[]);
-          const merged=new Map(state.sessions.map(s=>[s.id,s]));
-          incomingRaw.forEach(s=>{ const id=s.id||uid(); merged.set(id,{...s,id}); });
-          state.sessions=Array.from(merged.values());
-          migrate();
-          for(const s of state.sessions) await idbPut('sessions',s);
-          render();
-        }catch{alert('Virheellinen JSON');}
-      } else if(file.name.endsWith('.csv')) {
-        alert('CSV import: toteutettu HRV/uni-setit JSONin kautta ensisijaisesti.');
+  // Edit load
+  const loadBtn = $("#btn-edit-load");
+  if (loadBtn) loadBtn.addEventListener("click", () => {
+    const exercise = w.exercises[w.currentExerciseIdx];
+    const currentSet = exercise?.sets[w.currentSetIdx];
+    if (!currentSet) return;
+    const input = prompt("Syötä paino (kg):", currentSet.loadKg || "");
+    if (input !== null) {
+      const v = parseNumericInput(input);
+      if (v !== null) {
+        currentSet.loadKg = v;
+        // Update all remaining sets too
+        exercise.sets.forEach((s, i) => { if (i >= w.currentSetIdx) s.loadKg = v; });
+        render();
       }
-    };
-    r.readAsText(file);
+    }
+  });
+
+  // Next set
+  const nextSetBtn = $("#btn-next-set");
+  if (nextSetBtn) nextSetBtn.addEventListener("click", () => {
+    const exercise = w.exercises[w.currentExerciseIdx];
+    const currentSet = exercise?.sets[w.currentSetIdx];
+    if (!currentSet) return;
+
+    const velocity = parseNumericInput($("#input-set-velocity")?.value);
+
+    currentSet.reps = selectedReps;
+    currentSet.actualVx = selectedVara;
+    currentSet.velocity = velocity;
+    currentSet.completed = true;
+
+    // Failure reaction
+    if (selectedVara === 0) {
+      const isPrimary = exercise.role === "primary";
+      const consecutiveFailures = exercise.sets.slice(0, w.currentSetIdx + 1).filter(s => s.actualVx === 0).length;
+      const reaction = failureReaction(currentSet.loadKg || 0, currentSet.targetReps, isPrimary, consecutiveFailures);
+
+      if (reaction.shouldStop) {
+        showToast("2× failure — lopetatko tähän liikkeeseen?", "bad", 5000);
+      } else {
+        showToast(reaction.message, "warn");
+      }
+
+      // Adjust remaining sets
+      exercise.sets.forEach((s, i) => {
+        if (i > w.currentSetIdx && !s.completed) {
+          s.loadKg = reaction.nextSetLoad;
+          s.targetReps = reaction.nextSetReps;
+        }
+      });
+    }
+
+    // VL% calculation
+    if (velocity && exercise.sets[0]?.velocity) {
+      const vl = velocityLossPercent(exercise.sets[0].velocity, velocity);
+      if (vl !== null && vl > (state.settings?.vlStopPercent || 20)) {
+        showToast(`VL% = ${vl.toFixed(1)}% — yli rajan!`, "warn");
+      }
+    }
+
+    w.currentSetIdx++;
+    selectedReps = null;
+    selectedVara = null;
+    render();
+  });
+
+  // Next exercise
+  const nextExBtn = $("#btn-next-exercise");
+  if (nextExBtn) nextExBtn.addEventListener("click", () => {
+    w.currentExerciseIdx++;
+    w.currentSetIdx = 0;
+    render();
+  });
+
+  // Save workout
+  const saveBtn = $("#btn-save-workout");
+  if (saveBtn) saveBtn.addEventListener("click", async () => {
+    await saveWorkoutToDb();
+    showToast("Treeni tallennettu!", "ok");
+    state.workout = null;
+    await refresh();
+    state.view = "dashboard";
+    render();
+  });
+
+  // Discard workout
+  const discardBtn = $("#btn-discard-workout");
+  if (discardBtn) discardBtn.addEventListener("click", () => {
+    if (!confirm("Hylätäänkö treeni?")) return;
+    state.workout = null;
+    state.view = "dashboard";
+    render();
+  });
+
+  // End workout early
+  const endBtn = $("#btn-end-workout");
+  if (endBtn) endBtn.addEventListener("click", () => {
+    // Jump to summary
+    w.currentExerciseIdx = w.exercises.length;
+    render();
+  });
+
+  // Swap exercise
+  const swapBtn = $("#btn-swap-exercise");
+  if (swapBtn) swapBtn.addEventListener("click", () => {
+    const exercise = w.exercises[w.currentExerciseIdx];
+    if (!exercise) return;
+    // Show same category movements first
+    const sameCategory = state.movements.filter(m => m.category === exercise.category && m.name !== exercise.name);
+    const others = state.movements.filter(m => m.category !== exercise.category && m.name !== exercise.name);
+    const options = [...sameCategory, ...others];
+    const choice = prompt(
+      `Vaihda liike:\n${options.map((m, i) => `${i + 1}. ${m.name} (${m.category})`).join("\n")}\n\nSyötä numero:`,
+      "1"
+    );
+    const idx = parseInt(choice) - 1;
+    if (idx >= 0 && idx < options.length) {
+      exercise.name = options[idx].name;
+      exercise.movementId = options[idx].movementId;
+      exercise.category = options[idx].category;
+      render();
+    }
+  });
+}
+
+async function saveWorkoutToDb() {
+  const w = state.workout;
+  if (!w) return;
+
+  const bw = state.settings?.bodyweightKg || 91;
+  const rec = state.recommendation;
+
+  // Save session
+  const session = {
+    sessionId: w.sessionId,
+    dateISO: todayISO(),
+    plannedDayType: w.dayType,
+    mesocycleWeek: rec?.weekNum || null,
+    mesocycleId: state.mesocycle?.mesocycleId || null,
+    bodyweightKg: bw,
+    notes: "",
+    readinessCapLevel: state.readiness.capLevel,
+    readinessDetails: state.readiness,
+  };
+  await saveSession(session);
+
+  // Save sets
+  const sets = [];
+  for (const exercise of w.exercises) {
+    for (const s of exercise.sets) {
+      if (!s.completed) continue;
+      sets.push({
+        setId: uid(),
+        sessionId: w.sessionId,
+        movementId: exercise.movementId,
+        variantId: null,
+        setRole: exercise.role === "primary" ? "top" : "accessory",
+        externalLoadKg: s.loadKg,
+        reps: s.reps,
+        targetReps: s.targetReps,
+        targetVx: s.targetVx,
+        actualVx: s.actualVx,
+        velocityMean: s.velocity,
+        velocityPeak: null,
+        velocityRep1: null,
+        velocityLossPercent: null,
+        tempo: null,
+        restSec: null,
+        deviceMeta: null,
+        manualOverride: null,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    // Update movement progress for accessories
+    if (exercise.role !== "primary" && exercise.movementId) {
+      const completedSets = exercise.sets.filter(s => s.completed).map(s => ({
+        movementId: exercise.movementId,
+        externalLoadKg: s.loadKg,
+        reps: s.reps,
+        targetReps: s.targetReps,
+        actualVx: s.actualVx,
+        targetVx: s.targetVx,
+      }));
+      if (completedSets.length > 0) {
+        const existing = await getMovementProgress(exercise.movementId);
+        const updated = updateMovementProgressFromSets(existing, completedSets, exercise.sets[0]?.targetReps, exercise.sets[0]?.targetVx);
+        updated.movementId = exercise.movementId;
+        await saveMovementProgress(updated);
+      }
+    }
   }
 
-  function download(name,content,type){ const b=new Blob([content],{type}); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href); }
-  const byId=(id)=>document.getElementById(id);
-  const sum=(a)=>a.reduce((x,y)=>x+(+y||0),0);
-  const avg=(a)=>a.length?sum(a)/a.length:0;
-  const median=(a)=>{ if(!a.length) return 0; const s=[...a].sort((x,y)=>x-y); const m=Math.floor(s.length/2); return s.length%2?s[m]:(s[m-1]+s[m])/2; };
-  const mad=(a)=>{ const m=median(a); return median(a.map(x=>Math.abs(x-m))); };
-  const std=(a)=>{ const m=avg(a); return Math.sqrt(avg(a.map(x=>(x-m)**2))); };
-  const rolling=(a,n)=>a.map((_,i)=>avg(a.slice(Math.max(0,i-n+1),i+1)));
-  const trend=(a)=>a.length<2?0:(a[a.length-1]-a[0])/Math.abs(a[0]||1);
-  const rSquared=(y,yhat)=>{const ym=avg(y),ssr=sum(y.map((v,i)=>(v-yhat[i])**2)),sst=sum(y.map(v=>(v-ym)**2)); return sst===0?0:1-ssr/sst;};
-  const see=(pts,yhat)=>{const err=pts.map((p,i)=>Math.abs((p.v-yhat[i])/(p.v||1))*100); return avg(err);};
-  const acwrLoad=(sets)=>{ const day={}; sets.forEach(s=>{day[s.dateISO]=(day[s.dateISO]||0)+((s.repsDone||0)*(s.systemWeightKg||0));}); const vals=Object.values(day); const acute=avg(vals.slice(-7)), chronic=avg(vals.slice(-28)); const ratio=chronic?acute/chronic:0; return {ratio,warn:ratio>1.5}; };
+  await saveSets(sets);
+}
 
-  loadData().then(()=>{ updateModels(); render(); });
-})();
+// ═══════════════════════════════════════════════════════════════
+// URL PARAMS
+// ═══════════════════════════════════════════════════════════════
+
+function checkUrlParams() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("test") === "1") {
+    import("./test-runner.js").then(mod => mod.runTests()).catch(() => {
+      showToast("Test runner ei löytynyt", "bad");
+    });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PWA SERVICE WORKER
+// ═══════════════════════════════════════════════════════════════
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BOOT
+// ═══════════════════════════════════════════════════════════════
+
+init().then(() => checkUrlParams());
+
 </script>
 </body>
 </html>
