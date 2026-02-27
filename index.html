@@ -21,31 +21,37 @@
       --bad: #ef4444; --bad2: #991b1b;
       --radius: 12px; --radius-sm: 8px;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html { font-size: 16px; }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html { font-size: 16px; overflow-x: hidden; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
       background: var(--bg); color: var(--txt);
-      min-height: 100dvh; padding-bottom: env(safe-area-inset-bottom, 0);
+      min-height: 100dvh;
+      padding-top: env(safe-area-inset-top, 0);
+      padding-bottom: env(safe-area-inset-bottom, 0);
       -webkit-text-size-adjust: 100%;
+      overscroll-behavior-y: contain;
+      user-select: none; -webkit-user-select: none;
     }
+    input, textarea, select { user-select: auto; -webkit-user-select: auto; }
     a { color: var(--acc); }
     /* ── Layout ── */
-    .app { max-width: 600px; margin: 0 auto; padding: 8px; padding-bottom: 80px; }
+    .app { max-width: 600px; margin: 0 auto; padding: 12px; padding-bottom: 90px; }
     /* ── Nav ── */
     .nav {
       position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
-      background: #0d1628; border-top: 1px solid var(--border);
-      display: flex; justify-content: space-around; padding: 6px 0;
-      padding-bottom: max(6px, env(safe-area-inset-bottom));
+      background: rgba(13, 22, 40, 0.95); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border-top: 1px solid var(--border);
+      display: flex; justify-content: space-around; padding: 8px 0;
+      padding-bottom: max(8px, env(safe-area-inset-bottom));
     }
     .nav button {
       background: none; border: none; color: var(--muted); font-size: 10px;
-      display: flex; flex-direction: column; align-items: center; gap: 2px;
-      padding: 4px 8px; cursor: pointer; min-width: 56px;
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
+      padding: 6px 10px; cursor: pointer; min-width: 60px; min-height: 48px;
     }
     .nav button.active { color: var(--acc); }
-    .nav button .icon { font-size: 20px; }
+    .nav button .icon { font-size: 22px; }
     /* ── Cards ── */
     .card {
       background: var(--card); border: 1px solid var(--border);
@@ -101,16 +107,17 @@
       display: flex; gap: 6px; flex-wrap: wrap;
     }
     .set-btn {
-      width: 52px; height: 52px; border-radius: var(--radius-sm);
+      min-width: 56px; height: 56px; border-radius: var(--radius-sm);
       border: 2px solid var(--border2); background: var(--card);
-      color: var(--txt); font-size: 18px; font-weight: 700;
+      color: var(--txt); font-size: 20px; font-weight: 700;
       display: flex; align-items: center; justify-content: center;
-      cursor: pointer; transition: all 0.1s;
+      cursor: pointer; transition: all 0.1s; flex: 1;
     }
     .set-btn:active, .set-btn.selected {
       background: var(--acc); border-color: var(--acc); color: #fff;
+      transform: scale(0.95);
     }
-    .set-btn-vara { font-size: 14px; }
+    .set-btn-vara { font-size: 15px; }
     /* ── Readiness indicator ── */
     .readiness-dot {
       width: 14px; height: 14px; border-radius: 50%; display: inline-block;
@@ -177,13 +184,33 @@
     .set-row:last-child { border-bottom: none; }
     .set-number { font-size: 12px; color: var(--dim); width: 24px; text-align: center; }
     .load-display {
-      background: var(--card2); border-radius: var(--radius-sm);
-      padding: 6px 10px; font-weight: 600; font-size: 15px;
-      cursor: pointer; min-width: 70px; text-align: center;
+      background: var(--card2); border: 1px solid var(--border2); border-radius: var(--radius);
+      padding: 14px 20px; font-weight: 700; font-size: 22px;
+      cursor: pointer; min-width: 100px; text-align: center;
+      display: inline-block;
     }
-    .load-up { color: var(--ok); }
+    .load-display:active { background: var(--border); }
+    .load-up { color: var(--ok); border-color: var(--ok); }
+    /* ── Program slot ── */
+    .program-slot {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+    }
+    .program-slot:last-child { border-bottom: none; }
+    .program-slot-num { color: var(--dim); font-size: 13px; width: 20px; }
+    .program-slot-name { font-weight: 600; font-size: 14px; flex: 1; }
+    .program-slot-detail { text-align: right; font-size: 13px; }
+    .program-slot-load { font-weight: 700; color: var(--acc); }
+    .program-slot-sets { color: var(--muted); }
     /* ── Scrollable ── */
     .scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    /* ── Workout set buttons row ── */
+    .set-btns-row {
+      display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
+    }
+    @media (max-width: 360px) {
+      .set-btns-row { grid-template-columns: repeat(4, 1fr); }
+    }
   </style>
 </head>
 <body>
@@ -420,23 +447,28 @@ function renderDashboard() {
   const readinessClass = r.combined === "GREEN" ? "chip-green" : r.combined === "YELLOW" ? "chip-yellow" : "chip-red";
   const readinessEmoji = r.combined === "GREEN" ? "🟢" : r.combined === "YELLOW" ? "🟡" : "🔴";
 
-  // Build program preview
+  // Build program preview — always shows full program with accessories
   let programHTML = "";
-  if (rec && rec.dayPlan && rec.dayPlan.slots) {
+  if (rec && rec.dayPlan && rec.dayPlan.slots && rec.dayPlan.slots.length > 0) {
     programHTML = rec.dayPlan.slots.map((slot, i) => {
       const movName = slot.defaultMovementName || slot.category;
-      const loadStr = i === 0 && rec.targetExternalLoad !== null ? `+${rec.targetExternalLoad} kg` : "";
+      const isPrimary = slot.role === "primary";
+      const loadStr = isPrimary && rec.targetExternalLoad !== null
+        ? `<span class="program-slot-load">+${rec.targetExternalLoad} kg</span>`
+        : "";
       const setsReps = `${slot.sets}×${slot.reps}`;
-      return `<div class="flex-between" style="padding:6px 0;border-bottom:1px solid var(--border)">
-        <div><strong>${i + 1}.</strong> ${movName}</div>
-        <div style="text-align:right"><span style="font-weight:600">${setsReps}</span> ${loadStr}</div>
+      const vxStr = slot.targetVx !== null ? ` V${slot.targetVx}` : "";
+      return `<div class="program-slot">
+        <span class="program-slot-num">${i + 1}.</span>
+        <span class="program-slot-name">${isPrimary ? "⭐ " : ""}${movName}</span>
+        <div class="program-slot-detail">
+          <span class="program-slot-sets">${setsReps}${vxStr}</span><br>
+          ${loadStr}
+        </div>
       </div>`;
     }).join("");
-  } else if (rec && rec.targetExternalLoad !== null) {
-    programHTML = `<div class="flex-between" style="padding:6px 0">
-      <div><strong>1.</strong> Lisäpainoleuanveto</div>
-      <div style="text-align:right"><span style="font-weight:600">${rec.setCount}×${rec.targetReps}</span> +${rec.targetExternalLoad} kg</div>
-    </div>`;
+  } else {
+    programHTML = '<div class="muted">Ei ohjelmaa — aloita mesosykli</div>';
   }
 
   // Break warning
@@ -672,21 +704,21 @@ function renderActiveWorkout() {
         </div>
 
         <label>Toistot</label>
-        <div class="set-btns" id="reps-btns">
+        <div class="set-btns-row" id="reps-btns">
           ${[1,2,3,4,5,6,7,8,9,10].map(n =>
             `<button class="set-btn" data-reps="${n}">${n}</button>`
           ).join("")}
         </div>
 
-        <label style="margin-top:12px">Vara</label>
-        <div class="set-btns" id="vara-btns">
+        <label style="margin-top:14px">Vara (etäisyys failureen)</label>
+        <div class="set-btns-row" id="vara-btns">
           ${[0,1,2,3,4,5].map(n =>
             `<button class="set-btn set-btn-vara" data-vara="${n}">V${n}</button>`
           ).join("")}
         </div>
 
-        <label style="margin-top:12px">Velocity (valinnainen)</label>
-        <input type="number" inputmode="decimal" step="0.01" id="input-set-velocity" placeholder="m/s" style="max-width:120px">
+        <label style="margin-top:14px">Velocity (valinnainen)</label>
+        <input type="number" inputmode="decimal" step="0.01" id="input-set-velocity" placeholder="Setin mean velocity m/s">
       </div>
 
       <button class="btn btn-full mt" id="btn-next-set" disabled>→ Seuraava sarja</button>

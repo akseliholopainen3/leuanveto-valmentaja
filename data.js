@@ -913,6 +913,8 @@ function createDefaultMesocycle(startDateISO) {
             dayOfWeek: 5, dayType: "speed",
             slots: [
               { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 4, reps: 2, targetVx: 4 },
+              { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Alatalja", sets: 3, reps: 10, targetVx: 4 },
+              { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hammer curl", sets: 2, reps: 10, targetVx: null },
             ],
           },
         ],

@@ -253,17 +253,29 @@ function getWeekDef(mesocycle, weekNum) {
 }
 
 /**
- * Get the planned day for today from the week plan
+ * Get the planned day for today from the week plan.
+ * If no exact match for dayOfWeek, finds the nearest training day in the week.
+ * This ensures the user always gets a full program when they open the app.
  */
 function getTodayPlan(mesocycle, weekNum, dayOfWeek) {
   if (!mesocycle || !mesocycle.weekPlans) return null;
   const weekPlan = mesocycle.weekPlans.find((w) => w.week === weekNum);
-  if (!weekPlan) return null;
-  // Find the closest day
+  if (!weekPlan || !weekPlan.days || !weekPlan.days.length) return null;
+  // Exact match
   const exact = weekPlan.days.find((d) => d.dayOfWeek === dayOfWeek);
   if (exact) return exact;
-  // No training planned for today
-  return null;
+  // Find nearest training day (prefer same day or next, fallback to previous)
+  let best = null;
+  let bestDist = Infinity;
+  for (const d of weekPlan.days) {
+    const dist = Math.abs(d.dayOfWeek - dayOfWeek);
+    const wrapDist = Math.min(dist, 7 - dist);
+    if (wrapDist < bestDist) {
+      bestDist = wrapDist;
+      best = d;
+    }
+  }
+  return best;
 }
 
 /**
@@ -537,6 +549,47 @@ function initialWeightFrom1RM(oneRepMax) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// DEFAULT DAY PLAN GENERATOR
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Generate a full day plan with primary + accessories based on dayType.
+ * This ensures the user ALWAYS gets a complete program, even if the
+ * mesocycle weekPlan didn't have an entry for today's weekday.
+ */
+function generateDefaultDayPlan(dayType, weekDef, accessoryCapActive) {
+  const primaryReps = weekDef?.heavyReps || (dayType === "volume" ? 5 : dayType === "speed" ? 2 : 3);
+  const primaryVx = weekDef?.heavyTargetVx || (dayType === "volume" ? 3 : dayType === "speed" ? 4 : 2);
+  const primarySets = dayType === "volume" ? 5 : dayType === "speed" ? 4 : 3;
+
+  const slots = [
+    { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: primarySets, reps: primaryReps, targetVx: primaryVx },
+  ];
+
+  if (dayType === "heavy") {
+    slots.push(
+      { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 4, reps: 6, targetVx: 3 },
+      { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto", sets: 3, reps: 8, targetVx: 3 },
+      { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hauiskääntö tanko", sets: 3, reps: 10, targetVx: null },
+    );
+  } else if (dayType === "volume") {
+    slots.push(
+      { role: "accessory", category: "vertikaalityöntö", defaultMovementName: "Pystypunnerrus", sets: 4, reps: 8, targetVx: 3 },
+      { role: "accessory", category: "vertikaaliveto", defaultMovementName: "Ylätalja", sets: 3, reps: 10, targetVx: 3 },
+      { role: "accessory", category: "ojentajaekstensio", defaultMovementName: "Tricep pushdown", sets: 3, reps: 12, targetVx: null },
+    );
+  } else if (dayType === "speed") {
+    // Speed day: lighter accessories
+    slots.push(
+      { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Alatalja", sets: 3, reps: 10, targetVx: 4 },
+      { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hammer curl", sets: 2, reps: 10, targetVx: null },
+    );
+  }
+
+  return { dayOfWeek: null, dayType, slots };
+}
+
+// ═══════════════════════════════════════════════════════════════
 // VELOCITY LOSS %
 // ═══════════════════════════════════════════════════════════════
 
@@ -750,6 +803,23 @@ async function recommend(options = {}) {
     }
   }
 
+  // 15. Ensure dayPlan always has slots (fallback if mesocycle plan didn't match)
+  if (!dayPlan || !dayPlan.slots || dayPlan.slots.length === 0) {
+    dayPlan = generateDefaultDayPlan(dayType, weekDef, accessoryCapActive);
+    trace("DAY_PLAN_GENERATED", {}, { dayType, slotsCount: dayPlan.slots.length },
+      "Päivän ohjelma generoitu oletusliikkeillä");
+  }
+
+  // Apply accessory cap: reduce accessory set counts by 30% if active
+  if (accessoryCapActive && dayPlan && dayPlan.slots) {
+    dayPlan = { ...dayPlan, slots: dayPlan.slots.map(s => {
+      if (s.role === "accessory") {
+        return { ...s, sets: Math.max(2, Math.round(s.sets * 0.7)) };
+      }
+      return s;
+    })};
+  }
+
   // Build recommendation
   const rec = {
     recId: uid(),
@@ -947,6 +1017,8 @@ export {
   weeklyStimulus,
   // Stagnation
   checkStagnation,
+  // Default plan
+  generateDefaultDayPlan,
   // Speed
   speedDayLoad,
   // HRV
