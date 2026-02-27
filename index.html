@@ -252,6 +252,10 @@ import {
   getMesocycleWeek, getWeekDef, getTodayPlan,
   breakAnalysis, speedDayLoad,
   varaFeedback,
+  analyzeSessionAdaptation, applyAdaptations,
+  getFutureWorkouts,
+  eliteVolumeCheck,
+  computeMovementE1RM, computeMovementE1RMHistory,
 } from "./engine.js";
 
 // ═══════════════════════════════════════════════════════════════
@@ -272,6 +276,11 @@ const state = {
   // HRV & velocity readiness inputs for today
   todayHRV: null,
   todayVelocity: null,
+  // Adaptation history for volume optimization
+  adaptationHistory: [],
+  // Rest timer
+  restTimerInterval: null,
+  restTimerSeconds: 0,
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -532,6 +541,10 @@ function renderDashboard() {
     ${renderDecisionTracePreview(rec)}
 
     ${renderWeeklyOverview()}
+
+    ${renderEliteWarnings()}
+
+    ${renderFutureWorkoutsPreview()}
   </div>`;
 }
 
@@ -579,6 +592,40 @@ function renderWeeklyOverview() {
         <div class="kpi-label">Tonnage (kg)</div>
       </div>
     </div>
+  </div>`;
+}
+
+function renderEliteWarnings() {
+  const weekStart = new Date();
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
+  const weekStartISO = weekStart.toISOString().slice(0, 10);
+  const weekSets = state.allSets.filter(s => {
+    const session = state.sessions.find(ses => ses.sessionId === s.sessionId);
+    return session && session.dateISO >= weekStartISO;
+  });
+  const check = eliteVolumeCheck(weekSets, state.movements);
+  if (check.warnings.length === 0) return "";
+  return `<div class="card" style="border-color:var(--warn)">
+    <div class="card-title">⚡ Eliittitason huomiot</div>
+    ${check.warnings.map(w => `<div class="muted text-warn" style="padding:4px 0">⚠ ${w.message}</div>`).join("")}
+  </div>`;
+}
+
+function renderFutureWorkoutsPreview() {
+  if (!state.mesocycle) return "";
+  const futureWorkouts = getFutureWorkouts(state.mesocycle, todayISO(), 14);
+  if (futureWorkouts.length === 0) return "";
+  const dayNames = { 1: "Ma", 2: "Ti", 3: "Ke", 4: "To", 5: "Pe", 6: "La", 7: "Su" };
+  return `<div class="card">
+    <div class="card-title">📅 Tulevat treenit</div>
+    ${futureWorkouts.slice(0, 5).map(fw => `<div class="program-slot" style="flex-direction:column;align-items:stretch;gap:4px">
+      <div class="flex-between">
+        <span style="font-weight:600">${dayNames[fw.dayOfWeek]} ${fw.dateISO.slice(5)}</span>
+        <span class="muted">${fw.dayType} — Vk ${fw.weekNum} ${fw.weekLabel}</span>
+      </div>
+      <div class="muted">${fw.slots.map(s => `${s.role === "primary" ? "⭐" : "•"} ${s.defaultMovementName} ${s.sets}×${s.reps}`).join(" | ")}</div>
+    </div>`).join("")}
+    <button class="btn btn-sm btn-outline btn-full mt" data-nav="mesocycle">Näytä kaikki →</button>
   </div>`;
 }
 
@@ -678,24 +725,53 @@ function renderActiveWorkout() {
   const loadStr = currentSet.loadKg !== null ? `${currentSet.loadKg} kg` : "–";
   const isLoadIncrease = exercise.progressSuggestion === "increase";
 
+  // Rest timer display
+  const restTimerHTML = state.restTimerSeconds > 0
+    ? `<div style="text-align:center;margin:8px 0;font-size:24px;font-weight:700;color:var(--acc)">${formatRestTime(state.restTimerSeconds)}</div>`
+    : "";
+
+  // Completed sets summary for this exercise
+  const completedSetsHTML = exercise.sets.filter(s => s.completed).map((s, i) =>
+    `<div class="muted" style="padding:2px 0;font-size:12px">✓ Sarja ${i + 1}: ${s.loadKg} kg × ${s.reps} V${s.actualVx ?? "?"} ${s.velocity ? `(${s.velocity} m/s)` : ""}</div>`
+  ).join("");
+
+  // Exercise list sidebar
+  const exerciseListHTML = w.exercises.map((ex, i) => {
+    const done = ex.sets.every(s => s.completed);
+    const active = i === currentExIdx;
+    return `<span style="display:inline-block;padding:4px 8px;border-radius:6px;font-size:11px;margin:2px;${active ? 'background:var(--acc);color:#fff' : done ? 'background:var(--ok2);color:var(--ok)' : 'background:var(--card2);color:var(--muted)'}">${i + 1}. ${ex.name.split(" ")[0]}</span>`;
+  }).join("");
+
   return `<div class="fade-in">
     <div class="flex-between mb">
       <div class="muted">${currentExIdx + 1}/${totalExercises} liikettä</div>
-      <button class="btn btn-sm btn-outline" id="btn-end-workout">Lopeta</button>
+      <div>
+        <button class="btn btn-sm btn-outline" id="btn-skip-exercise" style="margin-right:4px">⏩ Ohita</button>
+        <button class="btn btn-sm btn-outline" id="btn-end-workout">🏁 Lopeta</button>
+      </div>
     </div>
     <div class="progress"><div class="progress-fill" style="width:${progressPct}%"></div></div>
+    <div class="scroll-x" style="margin:8px 0">${exerciseListHTML}</div>
 
     <div class="exercise-card">
-      <div class="exercise-name" id="btn-swap-exercise">${exercise.name}</div>
-      <div class="exercise-meta">
-        ${exercise.role === "primary" ? "Pääliike" : exercise.category}
-        ${isLoadIncrease ? ' <span class="text-ok">↑</span>' : ""}
+      <div class="flex-between">
+        <div>
+          <div class="exercise-name" id="btn-swap-exercise">🔄 ${exercise.name}</div>
+          <div class="exercise-meta">
+            ${exercise.role === "primary" ? "⭐ Pääliike" : exercise.category}
+            ${isLoadIncrease ? ' <span class="text-ok">↑ Progressio</span>' : ""}
+          </div>
+        </div>
       </div>
+
+      ${completedSetsHTML ? `<div style="margin-top:8px;padding:8px;background:var(--card2);border-radius:var(--radius-sm)">${completedSetsHTML}</div>` : ""}
+
+      ${restTimerHTML}
 
       <div style="margin-top:12px">
         <div class="flex-between">
           <span class="muted">Sarja ${currentSetIdx + 1}/${totalSets}</span>
-          <span class="muted">Tavoite: ${currentSet.targetReps} toistoa, V${currentSet.targetVx ?? "?"}</span>
+          <span class="muted">Tavoite: ${currentSet.targetReps} × V${currentSet.targetVx ?? "?"}</span>
         </div>
 
         <div style="text-align:center;margin:16px 0">
@@ -722,8 +798,40 @@ function renderActiveWorkout() {
       </div>
 
       <button class="btn btn-full mt" id="btn-next-set" disabled>→ Seuraava sarja</button>
+      <button class="btn btn-outline btn-full mt" id="btn-add-set" style="font-size:13px">+ Lisäsarja</button>
     </div>
+
+    <button class="btn btn-outline btn-full mt" id="btn-add-exercise" style="font-size:14px">+ Lisää liike</button>
   </div>`;
+}
+
+function formatRestTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s < 10 ? "0" : ""}${s}`;
+}
+
+function startRestTimer() {
+  stopRestTimer();
+  state.restTimerSeconds = 0;
+  state.restTimerInterval = setInterval(() => {
+    state.restTimerSeconds++;
+    const el = document.querySelector('[data-rest-timer]');
+    if (el) el.textContent = formatRestTime(state.restTimerSeconds);
+    // Update timer display in-place without full re-render
+    const timerDiv = document.querySelector('.rest-timer-display');
+    if (!timerDiv) {
+      // Find a spot to show timer or wait for next render
+    }
+  }, 1000);
+}
+
+function stopRestTimer() {
+  if (state.restTimerInterval) {
+    clearInterval(state.restTimerInterval);
+    state.restTimerInterval = null;
+  }
+  state.restTimerSeconds = 0;
 }
 
 function renderWorkoutExerciseComplete(exercise) {
@@ -741,22 +849,54 @@ function renderWorkoutSummary() {
   if (!w) return "";
 
   const totalSets = w.exercises.reduce((sum, ex) => sum + ex.sets.filter(s => s.completed).length, 0);
+  const bw = state.settings?.bodyweightKg || 91;
+  const totalTonnage = w.exercises.reduce((sum, ex) =>
+    sum + ex.sets.filter(s => s.completed).reduce((ss, s) => ss + (s.loadKg || 0) * (s.reps || 0), 0), 0);
+
+  // Adaptation preview
+  const rec = state.recommendation;
+  let adaptationPreview = "";
+  if (rec?.dayPlan?.slots) {
+    const adaptations = analyzeSessionAdaptation(w.exercises, rec.dayPlan.slots);
+    if (adaptations.length > 0) {
+      adaptationPreview = `<div class="card" style="border-color:var(--acc)">
+        <div class="card-title">🧠 Adaptiivinen analyysi</div>
+        ${adaptations.map(a => `<div class="muted" style="padding:4px 0">${a.type === "volume_up" ? "📈" : a.type === "volume_down" ? "📉" : "➕"} ${a.reason}</div>`).join("")}
+      </div>`;
+    }
+  }
 
   return `<div class="fade-in">
     <div class="card text-center">
       <div style="font-size:48px;margin-bottom:12px">💪</div>
       <div style="font-size:20px;font-weight:700">Treeni valmis!</div>
-      <div class="muted mt">${totalSets} sarjaa tehty</div>
+      <div class="kpi-row mt">
+        <div class="kpi-box"><div class="kpi">${totalSets}</div><div class="kpi-label">Sarjat</div></div>
+        <div class="kpi-box"><div class="kpi">${w.exercises.length}</div><div class="kpi-label">Liikkeet</div></div>
+        <div class="kpi-box"><div class="kpi">${Math.round(totalTonnage)}</div><div class="kpi-label">Tonnage (kg)</div></div>
+      </div>
     </div>
 
-    ${w.exercises.map(ex => `<div class="card">
-      <div style="font-weight:600">${ex.name}</div>
-      ${ex.sets.filter(s => s.completed).map(s =>
-        `<div class="muted">${s.loadKg} kg × ${s.reps} @ V${s.actualVx ?? "?"} ${s.velocity ? `(${s.velocity} m/s)` : ""}</div>`
-      ).join("")}
-    </div>`).join("")}
+    ${w.exercises.map(ex => {
+      const completedSets = ex.sets.filter(s => s.completed);
+      if (completedSets.length === 0) return "";
+      const exE1RM = ex.role === "primary"
+        ? e1rmExternal(bw, completedSets[0].loadKg || 0, completedSets[0].reps || 3, completedSets[0].actualVx ?? 2)
+        : e1rmAccessory(completedSets[0].loadKg || 0, completedSets[0].reps || 3);
+      return `<div class="card">
+        <div class="flex-between">
+          <div style="font-weight:600">${ex.role === "primary" ? "⭐ " : ""}${ex.name}</div>
+          ${exE1RM !== null ? `<span class="muted">e1RM: ${exE1RM.toFixed(1)} kg</span>` : ""}
+        </div>
+        ${completedSets.map(s =>
+          `<div class="muted">${s.loadKg} kg × ${s.reps} @ V${s.actualVx ?? "?"} ${s.velocity ? `(${s.velocity} m/s)` : ""}</div>`
+        ).join("")}
+      </div>`;
+    }).join("")}
 
-    <button class="btn btn-ok btn-full mb" id="btn-save-workout">Tallenna treeni</button>
+    ${adaptationPreview}
+
+    <button class="btn btn-ok btn-full mb" id="btn-save-workout">💾 Tallenna treeni</button>
     <button class="btn btn-outline btn-full" id="btn-discard-workout">Hylkää</button>
   </div>`;
 }
@@ -770,6 +910,8 @@ function renderMesocycle() {
   if (!meso) return `<div class="fade-in"><div class="section-header">Mesosykli</div><div class="card"><div class="muted">Ei aktiivista mesosykliä</div><button class="btn btn-full mt" id="btn-new-meso">Aloita uusi mesosykli</button></div></div>`;
 
   const currentWeek = getMesocycleWeek(meso, todayISO());
+  const dayNames = { 1: "Ma", 2: "Ti", 3: "Ke", 4: "To", 5: "Pe", 6: "La", 7: "Su" };
+  const futureWorkouts = getFutureWorkouts(meso, todayISO(), 28);
 
   return `<div class="fade-in">
     <div class="section-header">Mesosykli</div>
@@ -786,32 +928,51 @@ function renderMesocycle() {
 
     ${meso.weekDefs.map(w => {
       const isCurrent = w.week === currentWeek;
-      return `<div class="card" style="${isCurrent ? 'border-color:var(--acc)' : ''}">
+      const isPast = currentWeek && w.week < currentWeek;
+      return `<div class="card" style="${isCurrent ? 'border-color:var(--acc)' : isPast ? 'opacity:0.6' : ''}">
         <div class="flex-between">
           <div style="font-weight:600">Viikko ${w.week}: ${w.label}</div>
-          ${isCurrent ? '<span class="chip" style="font-size:11px">NYT</span>' : ""}
+          ${isCurrent ? '<span class="chip" style="font-size:11px">NYT</span>' : isPast ? '<span class="dim">✓</span>' : ""}
         </div>
         <div class="muted mt">
           Delta: ${(w.deltaPctBase * 100).toFixed(1)}% |
           Heavy: ${w.heavyReps} toistoa, V${w.heavyTargetVx}
         </div>
+        ${renderWeekPlanDays(meso, w.week, dayNames)}
       </div>`;
     }).join("")}
 
-    <div class="card">
-      <div class="card-title">Viikkosuunnitelma</div>
-      ${(meso.weekPlans || []).filter(wp => wp.week === (currentWeek || 1)).flatMap(wp => wp.days).map(d => {
-        const dayNames = { 1: "Ma", 2: "Ti", 3: "Ke", 4: "To", 5: "Pe", 6: "La", 7: "Su" };
-        return `<div style="padding:8px 0;border-bottom:1px solid var(--border)">
-          <div class="flex-between">
-            <span style="font-weight:600">${dayNames[d.dayOfWeek] || d.dayOfWeek} — ${d.dayType}</span>
-          </div>
-          <div class="muted">${d.slots.map(s => s.defaultMovementName || s.category).join(" | ")}</div>
-        </div>`;
-      }).join("") || '<div class="muted">Ei suunnitelmaa</div>'}
-    </div>
+    ${futureWorkouts.length > 0 ? `<div class="card">
+      <div class="card-title">📅 Tulevat treenit (${futureWorkouts.length} päivää)</div>
+      ${futureWorkouts.map(fw => `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+        <div class="flex-between">
+          <span style="font-weight:600">${dayNames[fw.dayOfWeek]} ${fw.dateISO.slice(5)}</span>
+          <span class="chip" style="font-size:11px">${fw.dayType}</span>
+        </div>
+        <div style="margin-top:6px">
+          ${fw.slots.map((s, i) => `<div class="flex-between" style="padding:3px 0">
+            <span class="muted">${s.role === "primary" ? "⭐" : `${i + 1}.`} ${s.defaultMovementName}</span>
+            <span class="muted">${s.sets}×${s.reps}${s.targetVx !== null ? ` V${s.targetVx}` : ""}</span>
+          </div>`).join("")}
+        </div>
+      </div>`).join("")}
+    </div>` : ""}
 
     <button class="btn btn-outline btn-full mt" id="btn-new-meso">Aloita uusi mesosykli</button>
+  </div>`;
+}
+
+function renderWeekPlanDays(meso, weekNum, dayNames) {
+  const weekPlan = (meso.weekPlans || []).find(wp => wp.week === weekNum);
+  if (!weekPlan || !weekPlan.days) return '';
+  return `<div style="margin-top:8px">
+    ${weekPlan.days.map(d => `<div style="padding:6px 0;border-top:1px solid var(--border)">
+      <div class="flex-between">
+        <span style="font-size:13px;font-weight:600">${dayNames[d.dayOfWeek]} — ${d.dayType}</span>
+        <button class="btn btn-sm btn-outline" data-edit-day="${weekNum}-${d.dayOfWeek}" style="font-size:11px;padding:4px 8px;min-height:28px">✏️</button>
+      </div>
+      <div class="muted" style="font-size:12px">${d.slots.map(s => `${s.role === "primary" ? "⭐" : "•"} ${s.defaultMovementName} ${s.sets}×${s.reps}`).join(" | ")}</div>
+    </div>`).join("")}
   </div>`;
 }
 
@@ -833,6 +994,15 @@ function renderMovements() {
     core: "Core", alaraaja: "Alaraaja", muu: "Muu",
   };
 
+  const bw = state.settings?.bodyweightKg || 91;
+
+  // Compute e1RM for every movement
+  const movementE1RMs = {};
+  for (const m of state.movements) {
+    const sets = state.allSets.filter(s => s.movementId === m.movementId);
+    movementE1RMs[m.movementId] = computeMovementE1RM(sets, m.isPrimary, bw);
+  }
+
   return `<div class="fade-in">
     <div class="flex-between mb">
       <div class="section-header" style="margin:0">Liikepankki</div>
@@ -842,10 +1012,21 @@ function renderMovements() {
     ${Object.entries(byCategory).map(([cat, movs]) => `
       <div class="card">
         <div class="card-title">${categoryLabels[cat] || cat} ${PULL_VOLUME_CATEGORIES.has(cat) ? "✅ vetokuorma" : ""}</div>
-        ${movs.map(m => `<div class="flex-between" style="padding:6px 0;border-bottom:1px solid var(--border)">
-          <span>${m.isPrimary ? "⭐ " : ""}${m.name}</span>
-          ${!m.isPreset ? `<button class="btn btn-sm btn-outline" data-delete-mov="${m.movementId}">🗑</button>` : ""}
-        </div>`).join("")}
+        ${movs.map(m => {
+          const e1rm = movementE1RMs[m.movementId];
+          const e1rmStr = e1rm !== null ? `${e1rm.toFixed(1)} kg` : "-";
+          const stag = checkStagnation({ stagnationWeeks: 0 }); // TODO: from progress
+          return `<div class="flex-between" style="padding:8px 0;border-bottom:1px solid var(--border)">
+            <div style="flex:1">
+              <div data-view-movement="${m.movementId}" style="cursor:pointer">${m.isPrimary ? "⭐ " : ""}${m.name}</div>
+              <div class="muted" style="font-size:11px">e1RM: <strong>${e1rmStr}</strong></div>
+            </div>
+            <div style="display:flex;gap:4px;align-items:center">
+              <button class="btn btn-sm btn-outline" data-view-movement="${m.movementId}" style="font-size:11px;padding:4px 8px;min-height:28px">📊</button>
+              ${!m.isPreset ? `<button class="btn btn-sm btn-outline" data-delete-mov="${m.movementId}" style="font-size:11px;padding:4px 8px;min-height:28px">🗑</button>` : ""}
+            </div>
+          </div>`;
+        }).join("")}
       </div>
     `).join("")}
 
@@ -859,6 +1040,8 @@ function renderMovements() {
       </select>
       <button class="btn btn-full mt" id="btn-save-movement">Tallenna</button>
     </div>
+
+    <div id="movement-detail" class="hidden"></div>
   </div>`;
 }
 
@@ -898,29 +1081,77 @@ function renderHistory() {
 // ═══════════════════════════════════════════════════════════════
 
 function renderTrends() {
-  // Calculate e1RM trend from sessions
-  const primaryMov = state.movements.find(m => m.isPrimary);
-  const primarySets = primaryMov ? state.allSets.filter(s => s.movementId === primaryMov.movementId && s.setRole === "top") : [];
   const bw = state.settings?.bodyweightKg || 91;
 
-  const e1rmPoints = primarySets.map(s => {
-    const vara = s.actualVx ?? 2;
-    const val = e1rmExternal(bw, s.externalLoadKg || 0, s.reps || 3, vara);
-    const session = state.sessions.find(ses => ses.sessionId === s.sessionId);
-    return { date: session?.dateISO, value: val };
-  }).filter(p => p.value !== null);
+  // Compute e1RM for all movements that have data
+  const movementTrends = [];
+  for (const m of state.movements) {
+    const sets = state.allSets.filter(s => s.movementId === m.movementId);
+    if (sets.length === 0) continue;
+    const history = computeMovementE1RMHistory(sets, state.sessions, m.isPrimary, bw);
+    if (history.length === 0) continue;
+    const current = history[history.length - 1].e1rm;
+    const first = history[0].e1rm;
+    const change = history.length > 1 ? current - first : 0;
+    movementTrends.push({ movement: m, history, current, change, totalSets: sets.length });
+  }
+
+  // Sort: primary first, then by total sets descending
+  movementTrends.sort((a, b) => {
+    if (a.movement.isPrimary && !b.movement.isPrimary) return -1;
+    if (!a.movement.isPrimary && b.movement.isPrimary) return 1;
+    return b.totalSets - a.totalSets;
+  });
 
   return `<div class="fade-in">
     <div class="section-header">Trendit</div>
-    <div class="card">
-      <div class="card-title">e1RM (lisäpaino) trendi</div>
-      ${e1rmPoints.length === 0 ? '<div class="muted">Ei dataa</div>' :
-        `<table>
-          <tr><th>Pvm</th><th>e1RM (kg)</th></tr>
-          ${e1rmPoints.slice(-10).map(p => `<tr><td>${formatDateShort(p.date)}</td><td>${p.value.toFixed(1)}</td></tr>`).join("")}
-        </table>
-        <div class="muted mt">Viimeisin: ${e1rmPoints[e1rmPoints.length - 1]?.value.toFixed(1) || "-"} kg</div>`}
-    </div>
+
+    ${movementTrends.length === 0 ? '<div class="card"><div class="muted">Ei dataa — tee treenejä nähdäksesi trendit</div></div>' : ""}
+
+    ${movementTrends.map(mt => {
+      const changeStr = mt.change > 0 ? `<span class="text-ok">+${mt.change.toFixed(1)}</span>` : mt.change < 0 ? `<span class="text-bad">${mt.change.toFixed(1)}</span>` : `<span class="dim">±0</span>`;
+      const isPrimary = mt.movement.isPrimary;
+      const label = isPrimary ? "e1RM system (kg)" : "e1RM (kg)";
+
+      return `<div class="card">
+        <div class="flex-between">
+          <div>
+            <div style="font-weight:600">${isPrimary ? "⭐ " : ""}${mt.movement.name}</div>
+            <div class="muted" style="font-size:11px">${mt.movement.category} | ${mt.totalSets} sarjaa</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:20px;font-weight:700">${mt.current.toFixed(1)}</div>
+            <div class="muted" style="font-size:11px">${label} ${changeStr}</div>
+          </div>
+        </div>
+        ${mt.history.length > 1 ? renderMiniChart(mt.history) : ""}
+        <div class="accordion-header" data-toggle="trend-${mt.movement.movementId}">
+          <span class="muted">Historia (${mt.history.length})</span><span>▼</span>
+        </div>
+        <div class="accordion-body" id="trend-${mt.movement.movementId}">
+          <table>
+            <tr><th>Pvm</th><th>Paino</th><th>Toistot</th><th>e1RM</th></tr>
+            ${mt.history.slice(-10).map(p => `<tr><td>${formatDateShort(p.dateISO)}</td><td>${p.load} kg</td><td>${p.reps}</td><td>${p.e1rm.toFixed(1)}</td></tr>`).join("")}
+          </table>
+        </div>
+      </div>`;
+    }).join("")}
+  </div>`;
+}
+
+function renderMiniChart(history) {
+  // Simple CSS bar chart
+  if (history.length < 2) return "";
+  const values = history.slice(-12).map(h => h.e1rm);
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const range = max - min || 1;
+  return `<div style="display:flex;align-items:end;gap:2px;height:40px;margin:8px 0">
+    ${values.map(v => {
+      const pct = ((v - min) / range) * 100;
+      const h = Math.max(4, pct * 0.4);
+      return `<div style="flex:1;height:${h}px;background:var(--acc);border-radius:2px 2px 0 0;min-width:4px" title="${v.toFixed(1)}"></div>`;
+    }).join("")}
   </div>`;
 }
 
@@ -981,7 +1212,7 @@ function renderSettingsView() {
     <div class="card">
       <div class="card-title">Diagnostiikka</div>
       <div class="muted">
-        Versio: 1.0.0 | Schema: 3<br>
+        Versio: 2.0.0 | Schema: 3<br>
         Sessioita: ${state.sessions.length} | Sarjoja: ${state.allSets.length}<br>
         Liikkeitä: ${state.movements.length}
       </div>
@@ -1069,6 +1300,107 @@ function bind() {
     await computeRecommendation();
     showToast("Uusi mesosykli aloitettu", "ok");
     render();
+  });
+
+  // Edit day plan slots
+  $$("[data-edit-day]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const [weekStr, dayStr] = btn.dataset.editDay.split("-");
+      const weekNum = parseInt(weekStr);
+      const dayOfWeek = parseInt(dayStr);
+      const weekPlan = state.mesocycle.weekPlans.find(wp => wp.week === weekNum);
+      if (!weekPlan) return;
+      const day = weekPlan.days.find(d => d.dayOfWeek === dayOfWeek);
+      if (!day) return;
+
+      const dayNames = { 1: "Ma", 2: "Ti", 3: "Ke", 4: "To", 5: "Pe", 6: "La", 7: "Su" };
+      const currentSlots = day.slots.map((s, i) => `${i + 1}. ${s.defaultMovementName} ${s.sets}×${s.reps}`).join("\n");
+
+      const action = prompt(
+        `${dayNames[dayOfWeek]} — ${day.dayType}\n\nNykyiset liikkeet:\n${currentSlots}\n\nValitse:\n1. Vaihda liike\n2. Lisää liike\n3. Poista liike\n4. Muuta sarjoja/toistoja`,
+        "1"
+      );
+
+      if (action === "1") {
+        const slotIdx = parseInt(prompt("Minkä liikkeen vaihdat? (numero):", "2")) - 1;
+        if (slotIdx < 0 || slotIdx >= day.slots.length) return;
+        const slot = day.slots[slotIdx];
+        const sameCat = state.movements.filter(m => m.category === slot.category);
+        const others = state.movements.filter(m => m.category !== slot.category);
+        const options = [...sameCat, ...others];
+        const choice = prompt(
+          `Vaihda ${slot.defaultMovementName}:\n${options.map((m, i) => `${i + 1}. ${m.name} (${m.category})`).join("\n")}\n\nNumero:`,
+          "1"
+        );
+        const idx = parseInt(choice) - 1;
+        if (idx >= 0 && idx < options.length) {
+          slot.defaultMovementName = options[idx].name;
+          slot.category = options[idx].category;
+          await saveMesocycle(state.mesocycle);
+          await computeRecommendation();
+          showToast(`Vaihdettu: ${options[idx].name}`, "ok");
+          render();
+        }
+      } else if (action === "2") {
+        const options = state.movements;
+        const choice = prompt(
+          `Lisää liike:\n${options.map((m, i) => `${i + 1}. ${m.name} (${m.category})`).join("\n")}\n\nNumero:`,
+          "1"
+        );
+        const idx = parseInt(choice) - 1;
+        if (idx >= 0 && idx < options.length) {
+          const m = options[idx];
+          const sets = parseInt(prompt("Sarjat:", "3")) || 3;
+          const reps = parseInt(prompt("Toistot:", "10")) || 10;
+          day.slots.push({
+            role: "accessory",
+            category: m.category,
+            defaultMovementName: m.name,
+            sets,
+            reps,
+            targetVx: null,
+          });
+          await saveMesocycle(state.mesocycle);
+          await computeRecommendation();
+          showToast(`${m.name} lisätty`, "ok");
+          render();
+        }
+      } else if (action === "3") {
+        const slotIdx = parseInt(prompt("Poista liike (numero):", "2")) - 1;
+        if (slotIdx >= 0 && slotIdx < day.slots.length && day.slots[slotIdx].role !== "primary") {
+          const removed = day.slots.splice(slotIdx, 1);
+          await saveMesocycle(state.mesocycle);
+          await computeRecommendation();
+          showToast(`${removed[0].defaultMovementName} poistettu`, "ok");
+          render();
+        } else {
+          showToast("Pääliikettä ei voi poistaa", "warn");
+        }
+      } else if (action === "4") {
+        const slotIdx = parseInt(prompt("Muokkaa liike (numero):", "2")) - 1;
+        if (slotIdx >= 0 && slotIdx < day.slots.length) {
+          const slot = day.slots[slotIdx];
+          const newSets = parseInt(prompt(`${slot.defaultMovementName} sarjat:`, slot.sets)) || slot.sets;
+          const newReps = parseInt(prompt(`${slot.defaultMovementName} toistot:`, slot.reps)) || slot.reps;
+          slot.sets = newSets;
+          slot.reps = newReps;
+          await saveMesocycle(state.mesocycle);
+          await computeRecommendation();
+          showToast("Päivitetty", "ok");
+          render();
+        }
+      }
+    });
+  });
+
+  // Movement detail view
+  $$("[data-view-movement]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const movId = btn.dataset.viewMovement;
+      const mov = state.movements.find(m => m.movementId === movId);
+      if (!mov) return;
+      showMovementDetail(mov);
+    });
   });
 
   // Movements
@@ -1383,9 +1715,78 @@ function bindWorkoutEvents() {
       }
     }
 
+    // Start rest timer
+    startRestTimer();
+
     w.currentSetIdx++;
     selectedReps = null;
     selectedVara = null;
+    render();
+  });
+
+  // Add extra set to current exercise
+  const addSetBtn = $("#btn-add-set");
+  if (addSetBtn) addSetBtn.addEventListener("click", () => {
+    const exercise = w.exercises[w.currentExerciseIdx];
+    if (!exercise) return;
+    const lastSet = exercise.sets[exercise.sets.length - 1];
+    exercise.sets.push({
+      idx: exercise.sets.length,
+      targetReps: lastSet?.targetReps || 3,
+      targetVx: lastSet?.targetVx || 2,
+      loadKg: lastSet?.loadKg || null,
+      reps: null,
+      actualVx: null,
+      velocity: null,
+      completed: false,
+    });
+    showToast("Lisäsarja lisätty", "ok");
+    render();
+  });
+
+  // Add extra exercise
+  const addExBtn = $("#btn-add-exercise");
+  if (addExBtn) addExBtn.addEventListener("click", () => {
+    const options = state.movements.filter(m => !w.exercises.some(ex => ex.movementId === m.movementId));
+    if (options.length === 0) { showToast("Kaikki liikkeet jo mukana", "warn"); return; }
+    const choice = prompt(
+      `Lisää liike:\n${options.map((m, i) => `${i + 1}. ${m.name} (${m.category})`).join("\n")}\n\nSyötä numero:`,
+      "1"
+    );
+    const idx = parseInt(choice) - 1;
+    if (idx >= 0 && idx < options.length) {
+      const m = options[idx];
+      const setsCount = parseInt(prompt("Sarjojen määrä:", "3")) || 3;
+      const repsTarget = parseInt(prompt("Tavoitetoistot:", "10")) || 10;
+      w.exercises.push({
+        movementId: m.movementId,
+        name: m.name,
+        category: m.category,
+        role: "accessory",
+        loadKg: null,
+        progressSuggestion: "hold",
+        sets: Array.from({ length: setsCount }, (_, i) => ({
+          idx: i,
+          targetReps: repsTarget,
+          targetVx: null,
+          loadKg: null,
+          reps: null,
+          actualVx: null,
+          velocity: null,
+          completed: false,
+        })),
+      });
+      showToast(`${m.name} lisätty`, "ok");
+      render();
+    }
+  });
+
+  // Skip exercise
+  const skipBtn = $("#btn-skip-exercise");
+  if (skipBtn) skipBtn.addEventListener("click", () => {
+    w.currentExerciseIdx++;
+    w.currentSetIdx = 0;
+    stopRestTimer();
     render();
   });
 
@@ -1394,6 +1795,7 @@ function bindWorkoutEvents() {
   if (nextExBtn) nextExBtn.addEventListener("click", () => {
     w.currentExerciseIdx++;
     w.currentSetIdx = 0;
+    stopRestTimer();
     render();
   });
 
@@ -1517,6 +1919,79 @@ async function saveWorkoutToDb() {
   }
 
   await saveSets(sets);
+
+  // Adaptive analysis: compare what was done vs what was planned
+  if (rec?.dayPlan?.slots) {
+    const adaptations = analyzeSessionAdaptation(w.exercises, rec.dayPlan.slots);
+    if (adaptations.length > 0) {
+      state.adaptationHistory.push(...adaptations);
+      // Try to apply if enough history
+      const result = applyAdaptations(state.mesocycle, state.adaptationHistory);
+      if (result.applied) {
+        await saveMesocycle(state.mesocycle);
+        showToast(`Ohjelma optimoitu: ${result.changes[0]}`, "ok", 4000);
+      }
+    }
+  }
+
+  // Also update primary movement progress
+  const primaryEx = w.exercises.find(ex => ex.role === "primary" && ex.movementId);
+  if (primaryEx) {
+    const completedSets = primaryEx.sets.filter(s => s.completed).map(s => ({
+      movementId: primaryEx.movementId,
+      externalLoadKg: s.loadKg,
+      reps: s.reps,
+      targetReps: s.targetReps,
+      actualVx: s.actualVx,
+      targetVx: s.targetVx,
+    }));
+    if (completedSets.length > 0) {
+      const existing = await getMovementProgress(primaryEx.movementId);
+      const updated = updateMovementProgressFromSets(existing, completedSets, primaryEx.sets[0]?.targetReps, primaryEx.sets[0]?.targetVx);
+      updated.movementId = primaryEx.movementId;
+      await saveMovementProgress(updated);
+    }
+  }
+
+  stopRestTimer();
+}
+
+function showMovementDetail(mov) {
+  const bw = state.settings?.bodyweightKg || 91;
+  const sets = state.allSets.filter(s => s.movementId === mov.movementId);
+  const history = computeMovementE1RMHistory(sets, state.sessions, mov.isPrimary, bw);
+  const currentE1RM = history.length > 0 ? history[history.length - 1].e1rm : null;
+  const totalSets = sets.length;
+  const totalSessions = new Set(sets.map(s => s.sessionId)).size;
+
+  const detailDiv = document.getElementById("movement-detail");
+  if (!detailDiv) return;
+
+  detailDiv.classList.remove("hidden");
+  detailDiv.innerHTML = `<div class="card" style="border-color:var(--acc)">
+    <div class="flex-between">
+      <div>
+        <div style="font-size:18px;font-weight:700">${mov.isPrimary ? "⭐ " : ""}${mov.name}</div>
+        <div class="muted">${mov.category}</div>
+      </div>
+      <button class="btn btn-sm btn-outline" id="btn-close-detail">✕</button>
+    </div>
+    <div class="kpi-row mt">
+      <div class="kpi-box"><div class="kpi">${currentE1RM !== null ? currentE1RM.toFixed(1) : "-"}</div><div class="kpi-label">e1RM (kg)</div></div>
+      <div class="kpi-box"><div class="kpi">${totalSets}</div><div class="kpi-label">Sarjoja yhteensä</div></div>
+      <div class="kpi-box"><div class="kpi">${totalSessions}</div><div class="kpi-label">Treenejä</div></div>
+    </div>
+    ${history.length > 1 ? renderMiniChart(history) : ""}
+    ${history.length > 0 ? `<table class="mt">
+      <tr><th>Pvm</th><th>Paino</th><th>Toistot</th><th>e1RM</th></tr>
+      ${history.slice(-8).map(p => `<tr><td>${formatDateShort(p.dateISO)}</td><td>${p.load} kg</td><td>${p.reps}</td><td>${p.e1rm.toFixed(1)}</td></tr>`).join("")}
+    </table>` : '<div class="muted mt">Ei dataa vielä</div>'}
+  </div>`;
+
+  document.getElementById("btn-close-detail")?.addEventListener("click", () => {
+    detailDiv.classList.add("hidden");
+    detailDiv.innerHTML = "";
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════

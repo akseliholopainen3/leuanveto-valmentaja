@@ -962,6 +962,273 @@ function ouraHRVtoLnRMSSD(hrvMs) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// ADAPTIVE VOLUME OPTIMIZATION
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Analyze a completed session and compute adaptive adjustments
+ * for future workouts. If the user did extra sets/exercises or
+ * skipped some, the engine learns and adjusts.
+ */
+function analyzeSessionAdaptation(sessionExercises, dayPlanSlots) {
+  const adjustments = [];
+
+  // 1. Check per-slot: did the user do more or fewer sets than planned?
+  for (const slot of dayPlanSlots) {
+    const matchedExercises = sessionExercises.filter(
+      (ex) => ex.category === slot.category && ex.role === slot.role
+    );
+
+    if (matchedExercises.length === 0) continue;
+
+    for (const ex of matchedExercises) {
+      const completedSets = ex.sets.filter((s) => s.completed).length;
+      const plannedSets = slot.sets;
+      const delta = completedSets - plannedSets;
+
+      if (delta >= 2) {
+        // User consistently does more → suggest increasing volume
+        adjustments.push({
+          category: slot.category,
+          role: slot.role,
+          movementName: ex.name,
+          type: "volume_up",
+          delta,
+          suggestedSets: Math.min(plannedSets + 1, 6),
+          reason: `${ex.name}: ${completedSets} sarjaa tehty (suunniteltu ${plannedSets}) → +1 sarja`,
+        });
+      } else if (delta <= -1 && completedSets > 0) {
+        // User did fewer → reduce volume next time
+        adjustments.push({
+          category: slot.category,
+          role: slot.role,
+          movementName: ex.name,
+          type: "volume_down",
+          delta,
+          suggestedSets: Math.max(plannedSets - 1, 2),
+          reason: `${ex.name}: ${completedSets} sarjaa tehty (suunniteltu ${plannedSets}) → -1 sarja`,
+        });
+      }
+    }
+  }
+
+  // 2. Check for extra exercises the user added (not in plan)
+  const plannedCategories = new Set(dayPlanSlots.map((s) => s.category));
+  const extraExercises = sessionExercises.filter(
+    (ex) => !plannedCategories.has(ex.category) && ex.sets.some((s) => s.completed)
+  );
+
+  for (const ex of extraExercises) {
+    adjustments.push({
+      category: ex.category,
+      role: "accessory",
+      movementName: ex.name,
+      type: "new_exercise",
+      suggestedSets: ex.sets.filter((s) => s.completed).length,
+      reason: `${ex.name}: lisätty käsin → harkitaan lisäämistä ohjelmaan`,
+    });
+  }
+
+  return adjustments;
+}
+
+/**
+ * Apply accumulated session adaptations to mesocycle weekPlan.
+ * Only applies after 2+ consistent sessions with same pattern.
+ */
+function applyAdaptations(mesocycle, adaptationHistory) {
+  if (!adaptationHistory || adaptationHistory.length < 2) return { applied: false, changes: [] };
+
+  // Group by category+type and count occurrences
+  const counts = {};
+  for (const adj of adaptationHistory) {
+    const key = `${adj.category}:${adj.type}`;
+    if (!counts[key]) counts[key] = { ...adj, count: 0 };
+    counts[key].count++;
+  }
+
+  const changes = [];
+  for (const [key, entry] of Object.entries(counts)) {
+    if (entry.count < 2) continue; // Need 2+ sessions with same pattern
+
+    // Apply to all matching weekPlan slots
+    for (const wp of mesocycle.weekPlans) {
+      for (const day of wp.days) {
+        for (const slot of day.slots) {
+          if (slot.category === entry.category && slot.role === entry.role) {
+            if (entry.type === "volume_up" && entry.suggestedSets > slot.sets) {
+              const oldSets = slot.sets;
+              slot.sets = entry.suggestedSets;
+              changes.push(`${entry.movementName}: ${oldSets} → ${slot.sets} sarjaa`);
+            } else if (entry.type === "volume_down" && entry.suggestedSets < slot.sets) {
+              const oldSets = slot.sets;
+              slot.sets = entry.suggestedSets;
+              changes.push(`${entry.movementName}: ${oldSets} → ${slot.sets} sarjaa`);
+            }
+          }
+        }
+      }
+    }
+
+    if (entry.type === "new_exercise") {
+      changes.push(`${entry.movementName}: harkitse ohjelmaan lisäämistä`);
+    }
+  }
+
+  return { applied: changes.length > 0, changes };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FUTURE WORKOUTS PREVIEW
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Generate preview of upcoming workouts for N days ahead.
+ * Returns array of { dateISO, dayOfWeek, dayType, weekNum, weekLabel, slots }
+ */
+function getFutureWorkouts(mesocycle, currentDateISO, daysAhead = 14) {
+  if (!mesocycle || !mesocycle.weekPlans) return [];
+
+  const results = [];
+  const startDate = new Date(currentDateISO);
+
+  for (let d = 1; d <= daysAhead; d++) {
+    const date = new Date(startDate);
+    date.setDate(date.getDate() + d);
+    const dateISO = date.toISOString().slice(0, 10);
+    const dayOfWeek = date.getDay() || 7; // 1=Mon, 7=Sun
+
+    const weekNum = getMesocycleWeek(mesocycle, dateISO);
+    if (weekNum === null) continue; // Past end of mesocycle
+
+    const weekDef = getWeekDef(mesocycle, weekNum);
+    const weekPlan = mesocycle.weekPlans.find((w) => w.week === weekNum);
+    if (!weekPlan) continue;
+
+    const dayPlan = weekPlan.days.find((dp) => dp.dayOfWeek === dayOfWeek);
+    if (!dayPlan) continue;
+
+    results.push({
+      dateISO,
+      dayOfWeek,
+      dayType: dayPlan.dayType,
+      weekNum,
+      weekLabel: weekDef?.label || "",
+      deltaPctBase: weekDef?.deltaPctBase || 0,
+      slots: dayPlan.slots,
+    });
+  }
+
+  return results;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ELITE VOLUME/INTENSITY CHECK
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Check if weekly volume meets elite-level minimum thresholds.
+ * Returns warnings if below recommended minimums.
+ */
+function eliteVolumeCheck(weekSets, movements) {
+  const stimulus = weeklyStimulus(weekSets, movements);
+  const warnings = [];
+
+  // Elite pull volume: minimum ~15 hard sets/week for vertical + horizontal pull
+  if (stimulus.pullVolumeSets < 12) {
+    warnings.push({
+      type: "low_pull_volume",
+      current: stimulus.pullVolumeSets,
+      target: 15,
+      message: `Vetosarjoja ${stimulus.pullVolumeSets}/viikko — eliittitasolla suositus ≥15`,
+    });
+  }
+
+  // Heavy exposure frequency: at least 4 heavy sets/week
+  if (stimulus.heavyExposures < 3) {
+    warnings.push({
+      type: "low_heavy_exposure",
+      current: stimulus.heavyExposures,
+      target: 6,
+      message: `Heavy-altistuksia ${stimulus.heavyExposures}/viikko — suositus ≥6`,
+    });
+  }
+
+  // Check push-pull balance
+  const pushSets = (stimulus.byCategory["horisontaalityöntö"]?.sets || 0) +
+                   (stimulus.byCategory["vertikaalityöntö"]?.sets || 0);
+  const pullSets = stimulus.pullVolumeSets;
+  if (pullSets > 0 && pushSets < pullSets * 0.5) {
+    warnings.push({
+      type: "push_pull_imbalance",
+      pushSets,
+      pullSets,
+      message: `Työntö/veto-suhde ${pushSets}:${pullSets} — lisää työntöliikkeitä (tavoite ≥1:2)`,
+    });
+  }
+
+  return { stimulus, warnings, isEliteReady: warnings.length === 0 };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ALL-MOVEMENT e1RM COMPUTATION
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Compute e1RM for any movement from its set history.
+ * Uses accessory Epley for non-primary, system Epley for primary.
+ */
+function computeMovementE1RM(movementSets, isPrimary, bodyweightKg) {
+  if (!movementSets.length) return null;
+
+  // Take last 6 sets with valid data
+  const recent = movementSets
+    .filter((s) => s.externalLoadKg > 0 && s.reps >= 1)
+    .slice(-6);
+
+  if (!recent.length) return null;
+
+  const values = recent.map((s) => {
+    if (isPrimary) {
+      const vara = s.actualVx ?? s.targetVx ?? 2;
+      return e1rmSystem(bodyweightKg, s.externalLoadKg, s.reps, vara);
+    } else {
+      return e1rmAccessory(s.externalLoadKg, s.reps);
+    }
+  }).filter((v) => v !== null);
+
+  return values.length > 0 ? median(values) : null;
+}
+
+/**
+ * Compute e1RM history (time series) for any movement
+ */
+function computeMovementE1RMHistory(movementSets, sessions, isPrimary, bodyweightKg) {
+  const sessionMap = new Map(sessions.map((s) => [s.sessionId, s]));
+  const points = [];
+
+  for (const s of movementSets) {
+    if (s.externalLoadKg <= 0 || s.reps < 1) continue;
+    const session = sessionMap.get(s.sessionId);
+    if (!session) continue;
+
+    let e1rm;
+    if (isPrimary) {
+      const vara = s.actualVx ?? s.targetVx ?? 2;
+      e1rm = e1rmSystem(bodyweightKg, s.externalLoadKg, s.reps, vara);
+    } else {
+      e1rm = e1rmAccessory(s.externalLoadKg, s.reps);
+    }
+
+    if (e1rm !== null) {
+      points.push({ dateISO: session.dateISO, e1rm, load: s.externalLoadKg, reps: s.reps });
+    }
+  }
+
+  return points;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // EXPORTS
 // ═══════════════════════════════════════════════════════════════
 
@@ -1023,4 +1290,14 @@ export {
   speedDayLoad,
   // HRV
   ouraHRVtoLnRMSSD,
+  // Adaptive
+  analyzeSessionAdaptation,
+  applyAdaptations,
+  // Future workouts
+  getFutureWorkouts,
+  // Elite check
+  eliteVolumeCheck,
+  // Movement e1RM
+  computeMovementE1RM,
+  computeMovementE1RMHistory,
 };
