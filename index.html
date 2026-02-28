@@ -256,6 +256,7 @@ import {
   getFutureWorkouts,
   eliteVolumeCheck,
   computeMovementE1RM, computeMovementE1RMHistory,
+  REST_RECOMMENDATIONS,
 } from "./engine.js";
 
 // ═══════════════════════════════════════════════════════════════
@@ -462,14 +463,19 @@ function renderDashboard() {
     programHTML = rec.dayPlan.slots.map((slot, i) => {
       const movName = slot.defaultMovementName || slot.category;
       const isPrimary = slot.role === "primary";
-      const loadStr = isPrimary && rec.targetExternalLoad !== null
-        ? `<span class="program-slot-load">+${rec.targetExternalLoad} kg</span>`
-        : "";
+      const isBackoff = slot.role === "backoff";
+      let loadStr = "";
+      if (isPrimary && rec.targetExternalLoad !== null) {
+        loadStr = `<span class="program-slot-load">+${rec.targetExternalLoad} kg</span>`;
+      } else if (isBackoff && rec.targetExternalLoad !== null) {
+        loadStr = `<span class="program-slot-load" style="color:var(--muted)">+${roundToHalf(rec.targetExternalLoad * 0.85)} kg</span>`;
+      }
       const setsReps = `${slot.sets}×${slot.reps}`;
       const vxStr = slot.targetVx !== null ? ` V${slot.targetVx}` : "";
+      const icon = isPrimary ? "⭐ " : isBackoff ? "↩ " : "";
       return `<div class="program-slot">
         <span class="program-slot-num">${i + 1}.</span>
-        <span class="program-slot-name">${isPrimary ? "⭐ " : ""}${movName}</span>
+        <span class="program-slot-name">${icon}${movName}</span>
         <div class="program-slot-detail">
           <span class="program-slot-sets">${setsReps}${vxStr}</span><br>
           ${loadStr}
@@ -623,7 +629,7 @@ function renderFutureWorkoutsPreview() {
         <span style="font-weight:600">${dayNames[fw.dayOfWeek]} ${fw.dateISO.slice(5)}</span>
         <span class="muted">${fw.dayType} — Vk ${fw.weekNum} ${fw.weekLabel}</span>
       </div>
-      <div class="muted">${fw.slots.map(s => `${s.role === "primary" ? "⭐" : "•"} ${s.defaultMovementName} ${s.sets}×${s.reps}`).join(" | ")}</div>
+      <div class="muted">${fw.slots.map(s => `${s.role === "primary" ? "⭐" : s.role === "backoff" ? "↩" : "•"} ${s.defaultMovementName} ${s.sets}×${s.reps}`).join(" | ")}</div>
     </div>`).join("")}
     <button class="btn btn-sm btn-outline btn-full mt" data-nav="mesocycle">Näytä kaikki →</button>
   </div>`;
@@ -725,9 +731,14 @@ function renderActiveWorkout() {
   const loadStr = currentSet.loadKg !== null ? `${currentSet.loadKg} kg` : "–";
   const isLoadIncrease = exercise.progressSuggestion === "increase";
 
+  // Rest time recommendation
+  const restRec = exercise.role === "primary" || exercise.role === "backoff"
+    ? REST_RECOMMENDATIONS[state.workout.dayType] || REST_RECOMMENDATIONS.heavy
+    : REST_RECOMMENDATIONS.accessory;
+
   // Rest timer display
   const restTimerHTML = state.restTimerSeconds > 0
-    ? `<div id="rest-timer-display" style="text-align:center;margin:8px 0;font-size:24px;font-weight:700;color:var(--acc)">${formatRestTime(state.restTimerSeconds)}</div>`
+    ? `<div id="rest-timer-display" style="text-align:center;margin:8px 0;font-size:24px;font-weight:700;color:var(--acc)">${formatRestTime(state.restTimerSeconds)}<div class="muted" style="font-size:11px;font-weight:400">Suositus: ${restRec.label}</div></div>`
     : `<div id="rest-timer-display" style="text-align:center;margin:8px 0;font-size:24px;font-weight:700;color:var(--acc);display:none"></div>`;
 
   // Completed sets summary for this exercise
@@ -758,7 +769,7 @@ function renderActiveWorkout() {
         <div>
           <div class="exercise-name" id="btn-swap-exercise">🔄 ${exercise.name}</div>
           <div class="exercise-meta">
-            ${exercise.role === "primary" ? "⭐ Pääliike" : exercise.category}
+            ${exercise.role === "primary" ? "⭐ Pääliike" : exercise.role === "backoff" ? "↩ Back-off" : exercise.category}
             ${isLoadIncrease ? ' <span class="text-ok">↑ Progressio</span>' : ""}
           </div>
         </div>
@@ -848,8 +859,16 @@ function renderWorkoutSummary() {
 
   const totalSets = w.exercises.reduce((sum, ex) => sum + ex.sets.filter(s => s.completed).length, 0);
   const bw = state.settings?.bodyweightKg || 91;
-  const totalTonnage = w.exercises.reduce((sum, ex) =>
+  const totalTonnageExt = w.exercises.reduce((sum, ex) =>
     sum + ex.sets.filter(s => s.completed).reduce((ss, s) => ss + (s.loadKg || 0) * (s.reps || 0), 0), 0);
+  // System tonnage includes bodyweight for primary/backoff movements
+  const totalTonnageSys = w.exercises.reduce((sum, ex) => {
+    const isPull = ex.role === "primary" || ex.role === "backoff";
+    return sum + ex.sets.filter(s => s.completed).reduce((ss, s) => {
+      const load = isPull ? (bw + (s.loadKg || 0)) : (s.loadKg || 0);
+      return ss + load * (s.reps || 0);
+    }, 0);
+  }, 0);
 
   // Adaptation preview
   const rec = state.recommendation;
@@ -870,20 +889,22 @@ function renderWorkoutSummary() {
       <div style="font-size:20px;font-weight:700">Treeni valmis!</div>
       <div class="kpi-row mt">
         <div class="kpi-box"><div class="kpi">${totalSets}</div><div class="kpi-label">Sarjat</div></div>
-        <div class="kpi-box"><div class="kpi">${w.exercises.length}</div><div class="kpi-label">Liikkeet</div></div>
-        <div class="kpi-box"><div class="kpi">${Math.round(totalTonnage)}</div><div class="kpi-label">Tonnage (kg)</div></div>
+        <div class="kpi-box"><div class="kpi">${Math.round(totalTonnageSys)}</div><div class="kpi-label">Tonnage sys</div></div>
+        <div class="kpi-box"><div class="kpi">${Math.round(totalTonnageExt)}</div><div class="kpi-label">Tonnage lisäp.</div></div>
       </div>
     </div>
 
     ${w.exercises.map(ex => {
       const completedSets = ex.sets.filter(s => s.completed);
       if (completedSets.length === 0) return "";
-      const exE1RM = ex.role === "primary"
+      const isPri = ex.role === "primary" || ex.role === "backoff";
+      const exE1RM = isPri
         ? e1rmExternal(bw, completedSets[0].loadKg || 0, completedSets[0].reps || 3, completedSets[0].actualVx ?? 2)
         : e1rmAccessory(completedSets[0].loadKg || 0, completedSets[0].reps || 3);
+      const icon = ex.role === "primary" ? "⭐ " : ex.role === "backoff" ? "↩ " : "";
       return `<div class="card">
         <div class="flex-between">
-          <div style="font-weight:600">${ex.role === "primary" ? "⭐ " : ""}${ex.name}</div>
+          <div style="font-weight:600">${icon}${ex.name}</div>
           ${exE1RM !== null ? `<span class="muted">e1RM: ${exE1RM.toFixed(1)} kg</span>` : ""}
         </div>
         ${completedSets.map(s =>
@@ -949,7 +970,7 @@ function renderMesocycle() {
         </div>
         <div style="margin-top:6px">
           ${fw.slots.map((s, i) => `<div class="flex-between" style="padding:3px 0">
-            <span class="muted">${s.role === "primary" ? "⭐" : `${i + 1}.`} ${s.defaultMovementName}</span>
+            <span class="muted">${s.role === "primary" ? "⭐" : s.role === "backoff" ? "↩" : `${i + 1}.`} ${s.defaultMovementName}</span>
             <span class="muted">${s.sets}×${s.reps}${s.targetVx !== null ? ` V${s.targetVx}` : ""}</span>
           </div>`).join("")}
         </div>
@@ -969,7 +990,7 @@ function renderWeekPlanDays(meso, weekNum, dayNames) {
         <span style="font-size:13px;font-weight:600">${dayNames[d.dayOfWeek]} — ${d.dayType}</span>
         <button class="btn btn-sm btn-outline" data-edit-day="${weekNum}-${d.dayOfWeek}" style="font-size:11px;padding:4px 8px;min-height:28px">✏️</button>
       </div>
-      <div class="muted" style="font-size:12px">${d.slots.map(s => `${s.role === "primary" ? "⭐" : "•"} ${s.defaultMovementName} ${s.sets}×${s.reps}`).join(" | ")}</div>
+      <div class="muted" style="font-size:12px">${d.slots.map(s => `${s.role === "primary" ? "⭐" : s.role === "backoff" ? "↩" : "•"} ${s.defaultMovementName} ${s.sets}×${s.reps}`).join(" | ")}</div>
     </div>`).join("")}
   </div>`;
 }
@@ -1210,7 +1231,7 @@ function renderSettingsView() {
     <div class="card">
       <div class="card-title">Diagnostiikka</div>
       <div class="muted">
-        Versio: 2.0.0 | Schema: 3<br>
+        Versio: 2.1.0 | Schema: 3<br>
         Sessioita: ${state.sessions.length} | Sarjoja: ${state.allSets.length}<br>
         Liikkeitä: ${state.movements.length}
       </div>
@@ -1546,8 +1567,12 @@ async function startWorkout() {
       const isPrimary = slot.role === "primary";
 
       let loadKg;
+      const isBackoff = slot.role === "backoff";
       if (isPrimary && rec.targetExternalLoad !== null) {
         loadKg = rec.targetExternalLoad;
+      } else if (isBackoff && rec.targetExternalLoad !== null) {
+        // Back-off: ~85-90% of top-set load
+        loadKg = roundToHalf(rec.targetExternalLoad * 0.85);
       } else if (mov) {
         // Get movement progress for accessory
         const progress = await getMovementProgress(movId);
@@ -1882,7 +1907,7 @@ async function saveWorkoutToDb() {
         sessionId: w.sessionId,
         movementId: exercise.movementId,
         variantId: null,
-        setRole: exercise.role === "primary" ? "top" : "accessory",
+        setRole: exercise.role === "primary" ? "top" : exercise.role === "backoff" ? "backoff" : "accessory",
         externalLoadKg: s.loadKg,
         reps: s.reps,
         targetReps: s.targetReps,
@@ -1920,6 +1945,32 @@ async function saveWorkoutToDb() {
   }
 
   await saveSets(sets);
+
+  // PR detection: check if any movement hit a new e1RM record
+  for (const exercise of w.exercises) {
+    if (!exercise.movementId) continue;
+    const completedSets = exercise.sets.filter(s => s.completed);
+    if (completedSets.length === 0) continue;
+    const isPrimary = exercise.role === "primary";
+    const exSets = state.allSets.filter(s => s.movementId === exercise.movementId);
+    const prevHistory = computeMovementE1RMHistory(exSets, state.sessions, isPrimary, bw);
+    const prevBest = prevHistory.length > 0 ? Math.max(...prevHistory.map(h => h.e1rm)) : 0;
+    // Compute current session e1RM
+    const nowSets = completedSets.map(s => ({
+      externalLoadKg: s.loadKg || 0, reps: s.reps || 1,
+      actualVx: s.actualVx, targetVx: s.targetVx,
+    }));
+    const nowE1RMs = nowSets.map(s => isPrimary
+      ? e1rmSystem(bw, s.externalLoadKg, s.reps, s.actualVx ?? 2)
+      : e1rmAccessory(s.externalLoadKg, s.reps)
+    ).filter(v => v !== null);
+    const nowBest = nowE1RMs.length > 0 ? Math.max(...nowE1RMs) : 0;
+    if (nowBest > prevBest && prevBest > 0) {
+      const delta = (nowBest - prevBest).toFixed(1);
+      const label = isPrimary ? "system" : "";
+      showToast(`🎉 PR! ${exercise.name}: ${nowBest.toFixed(1)} kg ${label} (+${delta})`, "ok", 5000);
+    }
+  }
 
   // Adaptive analysis: compare what was done vs what was planned
   if (rec?.dayPlan?.slots) {

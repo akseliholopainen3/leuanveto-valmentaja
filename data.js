@@ -800,7 +800,8 @@ function createDefaultMesocycle(startDateISO) {
           {
             dayOfWeek: 1, dayType: "heavy",
             slots: [
-              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 3, reps: 3, targetVx: 2 },
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 3, targetVx: 2 },
+              { role: "backoff", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto (back-off)", sets: 3, reps: 5, targetVx: 3 },
               { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 4, reps: 6, targetVx: 3 },
               { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto", sets: 3, reps: 8, targetVx: 3 },
               { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hauiskääntö tanko", sets: 3, reps: 10, targetVx: null },
@@ -818,7 +819,8 @@ function createDefaultMesocycle(startDateISO) {
           {
             dayOfWeek: 5, dayType: "heavy",
             slots: [
-              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 3, reps: 3, targetVx: 2 },
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 3, targetVx: 2 },
+              { role: "backoff", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto (back-off)", sets: 3, reps: 5, targetVx: 3 },
               { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Chest press", sets: 4, reps: 8, targetVx: 3 },
               { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Alatalja", sets: 3, reps: 10, targetVx: 3 },
               { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hammer curl", sets: 3, reps: 10, targetVx: null },
@@ -832,7 +834,8 @@ function createDefaultMesocycle(startDateISO) {
           {
             dayOfWeek: 1, dayType: "heavy",
             slots: [
-              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 3, reps: 3, targetVx: 2 },
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 3, targetVx: 2 },
+              { role: "backoff", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto (back-off)", sets: 3, reps: 5, targetVx: 3 },
               { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 4, reps: 6, targetVx: 3 },
               { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto", sets: 3, reps: 8, targetVx: 3 },
               { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hauiskääntö tanko", sets: 3, reps: 10, targetVx: null },
@@ -850,7 +853,8 @@ function createDefaultMesocycle(startDateISO) {
           {
             dayOfWeek: 5, dayType: "heavy",
             slots: [
-              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 3, reps: 3, targetVx: 2 },
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 3, targetVx: 2 },
+              { role: "backoff", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto (back-off)", sets: 3, reps: 5, targetVx: 3 },
               { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Chest press", sets: 4, reps: 8, targetVx: 3 },
               { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Alatalja", sets: 3, reps: 10, targetVx: 3 },
               { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hammer curl", sets: 3, reps: 10, targetVx: null },
@@ -864,7 +868,8 @@ function createDefaultMesocycle(startDateISO) {
           {
             dayOfWeek: 1, dayType: "heavy",
             slots: [
-              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 3, reps: 2, targetVx: 1 },
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 2, targetVx: 1 },
+              { role: "backoff", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto (back-off)", sets: 3, reps: 4, targetVx: 2 },
               { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 4, reps: 6, targetVx: 2 },
               { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto", sets: 3, reps: 8, targetVx: 2 },
               { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hauiskääntö tanko", sets: 3, reps: 10, targetVx: null },
@@ -882,7 +887,8 @@ function createDefaultMesocycle(startDateISO) {
           {
             dayOfWeek: 5, dayType: "heavy",
             slots: [
-              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 3, reps: 2, targetVx: 1 },
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: 5, reps: 2, targetVx: 1 },
+              { role: "backoff", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto (back-off)", sets: 3, reps: 4, targetVx: 2 },
               { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Chest press", sets: 4, reps: 8, targetVx: 2 },
               { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Alatalja", sets: 3, reps: 10, targetVx: 2 },
               { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hammer curl", sets: 3, reps: 10, targetVx: null },

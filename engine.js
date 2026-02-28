@@ -10,6 +10,7 @@ import {
   getAllMovements, getMovementProgress, saveMovementProgress,
   getMeasurementsByType,
   getAllMesocycles,
+  PULL_VOLUME_CATEGORIES,
 } from "./data.js";
 
 // ═══════════════════════════════════════════════════════════════
@@ -25,9 +26,16 @@ const DAY_TYPE_MULTIPLIERS = {
 };
 
 const DAY_TYPE_SET_RECIPES = {
-  heavy: { sets: 3, repsRange: [2, 3], targetVxRange: [1, 2] },
+  heavy: { sets: 5, repsRange: [2, 3], targetVxRange: [1, 2] },
   volume: { sets: [4, 5], repsRange: [4, 6], targetVxRange: [2, 3] },
   speed: { sets: [4, 5], repsRange: [2, 2], targetVxRange: [4, 5] },
+};
+
+const REST_RECOMMENDATIONS = {
+  heavy: { minSec: 180, maxSec: 300, label: "3–5 min" },
+  volume: { minSec: 120, maxSec: 180, label: "2–3 min" },
+  speed: { minSec: 90, maxSec: 120, label: "1.5–2 min" },
+  accessory: { minSec: 60, maxSec: 120, label: "1–2 min" },
 };
 
 const READINESS_CLASSES = { GREEN: 0, YELLOW: 1, RED: 2 };
@@ -560,14 +568,16 @@ function initialWeightFrom1RM(oneRepMax) {
 function generateDefaultDayPlan(dayType, weekDef, accessoryCapActive) {
   const primaryReps = weekDef?.heavyReps || (dayType === "volume" ? 5 : dayType === "speed" ? 2 : 3);
   const primaryVx = weekDef?.heavyTargetVx || (dayType === "volume" ? 3 : dayType === "speed" ? 4 : 2);
-  const primarySets = dayType === "volume" ? 5 : dayType === "speed" ? 4 : 3;
+  const primarySets = dayType === "volume" ? 5 : dayType === "speed" ? 4 : 5;
 
   const slots = [
     { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", sets: primarySets, reps: primaryReps, targetVx: primaryVx },
   ];
 
+  // Heavy: add back-off sets (3×5 @-10% with higher Vara target)
   if (dayType === "heavy") {
     slots.push(
+      { role: "backoff", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto (back-off)", sets: 3, reps: 5, targetVx: 3 },
       { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 4, reps: 6, targetVx: 3 },
       { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto", sets: 3, reps: 8, targetVx: 3 },
       { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hauiskääntö tanko", sets: 3, reps: 10, targetVx: null },
@@ -579,7 +589,6 @@ function generateDefaultDayPlan(dayType, weekDef, accessoryCapActive) {
       { role: "accessory", category: "ojentajaekstensio", defaultMovementName: "Tricep pushdown", sets: 3, reps: 12, targetVx: null },
     );
   } else if (dayType === "speed") {
-    // Speed day: lighter accessories
     slots.push(
       { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Alatalja", sets: 3, reps: 10, targetVx: 4 },
       { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hammer curl", sets: 2, reps: 10, targetVx: null },
@@ -895,7 +904,7 @@ function weeklyStimulus(sets, movements) {
 
     totalTonnageExternal += tonnage;
 
-    if (mov?.countsAsPullVolume) {
+    if (PULL_VOLUME_CATEGORIES.has(category)) {
       pullVolumeSets++;
       pullVolumeTonnage += tonnage;
     }
@@ -1237,6 +1246,7 @@ export {
   // Constants
   DAY_TYPE_MULTIPLIERS,
   DAY_TYPE_SET_RECIPES,
+  REST_RECOMMENDATIONS,
   READINESS_CLASSES,
   // Math
   median,
