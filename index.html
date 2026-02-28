@@ -727,8 +727,8 @@ function renderActiveWorkout() {
 
   // Rest timer display
   const restTimerHTML = state.restTimerSeconds > 0
-    ? `<div style="text-align:center;margin:8px 0;font-size:24px;font-weight:700;color:var(--acc)">${formatRestTime(state.restTimerSeconds)}</div>`
-    : "";
+    ? `<div id="rest-timer-display" style="text-align:center;margin:8px 0;font-size:24px;font-weight:700;color:var(--acc)">${formatRestTime(state.restTimerSeconds)}</div>`
+    : `<div id="rest-timer-display" style="text-align:center;margin:8px 0;font-size:24px;font-weight:700;color:var(--acc);display:none"></div>`;
 
   // Completed sets summary for this exercise
   const completedSetsHTML = exercise.sets.filter(s => s.completed).map((s, i) =>
@@ -816,12 +816,10 @@ function startRestTimer() {
   state.restTimerSeconds = 0;
   state.restTimerInterval = setInterval(() => {
     state.restTimerSeconds++;
-    const el = document.querySelector('[data-rest-timer]');
-    if (el) el.textContent = formatRestTime(state.restTimerSeconds);
-    // Update timer display in-place without full re-render
-    const timerDiv = document.querySelector('.rest-timer-display');
-    if (!timerDiv) {
-      // Find a spot to show timer or wait for next render
+    const el = document.getElementById('rest-timer-display');
+    if (el) {
+      el.textContent = formatRestTime(state.restTimerSeconds);
+      el.style.display = '';
     }
   }, 1000);
 }
@@ -1571,6 +1569,7 @@ async function startWorkout() {
         movementId: movId,
         name: slot.defaultMovementName || slot.category,
         category: slot.category,
+        originalCategory: slot.category,
         role: slot.role,
         loadKg,
         progressSuggestion,
@@ -1592,6 +1591,7 @@ async function startWorkout() {
       movementId: null,
       name: "Lisäpainoleuanveto",
       category: "vertikaaliveto",
+      originalCategory: "vertikaaliveto",
       role: "primary",
       loadKg: rec?.targetExternalLoad,
       progressSuggestion: "hold",
@@ -1762,6 +1762,7 @@ function bindWorkoutEvents() {
         movementId: m.movementId,
         name: m.name,
         category: m.category,
+        originalCategory: m.category,
         role: "accessory",
         loadKg: null,
         progressSuggestion: "hold",

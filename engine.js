@@ -974,9 +974,10 @@ function analyzeSessionAdaptation(sessionExercises, dayPlanSlots) {
   const adjustments = [];
 
   // 1. Check per-slot: did the user do more or fewer sets than planned?
+  //    Use originalCategory if available (survives mid-workout swaps)
   for (const slot of dayPlanSlots) {
     const matchedExercises = sessionExercises.filter(
-      (ex) => ex.category === slot.category && ex.role === slot.role
+      (ex) => (ex.originalCategory || ex.category) === slot.category && ex.role === slot.role
     );
 
     if (matchedExercises.length === 0) continue;
@@ -1015,7 +1016,7 @@ function analyzeSessionAdaptation(sessionExercises, dayPlanSlots) {
   // 2. Check for extra exercises the user added (not in plan)
   const plannedCategories = new Set(dayPlanSlots.map((s) => s.category));
   const extraExercises = sessionExercises.filter(
-    (ex) => !plannedCategories.has(ex.category) && ex.sets.some((s) => s.completed)
+    (ex) => !plannedCategories.has(ex.originalCategory || ex.category) && ex.sets.some((s) => s.completed)
   );
 
   for (const ex of extraExercises) {
