@@ -225,17 +225,17 @@
 import {
   initDB, uid, todayISO, parseNumericInput,
   getAllMovements, getMovementsByCategory, getPrimaryMovement, addMovement, deleteMovement,
-  getVariantsForMovement,
+  getVariantsForMovement, getVariantByName, getAllVariants,
   getAllSessions, getSession, saveSession, deleteSession,
   getSetsForSession, getAllSets, saveSet, saveSets, deleteSet,
   saveMeasurement, getMeasurementsByType,
-  getActiveMesocycle, saveMesocycle, createDefaultMesocycle, getAllMesocycles,
+  getActiveMesocycle, saveMesocycle, createDefaultMesocycle, createPeakingMesocycle, getAllMesocycles,
   getSettings, saveSettings,
   exportFullBackup, importFullBackup,
   parseCSV, importHistoricalCSV,
   getMovementProgress, getAllMovementProgress, saveMovementProgress,
   getTracesForRec,
-  CATEGORIES, PULL_VOLUME_CATEGORIES,
+  CATEGORIES, PULL_VOLUME_CATEGORIES, VARIANT_DAY_TYPE_MAP,
   validateVelocity, validateLoad, validateReps, validateHRV, validateBodyweight,
   isVelocityTypo,
 } from "./data.js";
@@ -257,6 +257,8 @@ import {
   eliteVolumeCheck,
   computeMovementE1RM, computeMovementE1RMHistory,
   REST_RECOMMENDATIONS,
+  variantLoadModifier, variantRepOverride, assignVariantRotation,
+  computeAttemptLoads,
 } from "./engine.js";
 
 // ═══════════════════════════════════════════════════════════════
@@ -297,7 +299,17 @@ async function init() {
   state.mesocycle = await getActiveMesocycle();
   if (!state.mesocycle) {
     state.mesocycle = createDefaultMesocycle(todayISO());
+    assignVariantRotation(state.mesocycle.weekPlans);
     await saveMesocycle(state.mesocycle);
+  } else if (state.mesocycle.type !== "peaking") {
+    // Migrate existing mesocycle: add variants if missing
+    const hasVariants = state.mesocycle.weekPlans?.some(wp =>
+      wp.days?.some(d => d.slots?.some(s => s.variantName))
+    );
+    if (!hasVariants && state.mesocycle.weekPlans) {
+      assignVariantRotation(state.mesocycle.weekPlans);
+      await saveMesocycle(state.mesocycle);
+    }
   }
   await computeReadiness();
   await computeRecommendation();
@@ -451,7 +463,8 @@ function renderDashboard() {
   const mesoNum = state.mesocycle ? (state.sessions.length > 0 ? Math.ceil(state.sessions.length / 12) : 1) : 1;
 
   // Day type labels in Finnish
-  const dayTypeLabels = { heavy: "Heavy", volume: "Volume", speed: "Speed", rest: "Lepo" };
+  const dayTypeLabels = { heavy: "Heavy", volume: "Volume", speed: "Speed", competition: "Kilpailu", rest: "Lepo" };
+  const isPeaking = rec?.mesocycleType === "peaking";
 
   // Readiness badge
   const readinessClass = r.combined === "GREEN" ? "chip-green" : r.combined === "YELLOW" ? "chip-yellow" : "chip-red";
@@ -464,18 +477,26 @@ function renderDashboard() {
       const movName = slot.defaultMovementName || slot.category;
       const isPrimary = slot.role === "primary";
       const isBackoff = slot.role === "backoff";
+      const isAttempt = ["warmup", "opener", "attempt2", "attempt3"].includes(slot.role);
       let loadStr = "";
-      if (isPrimary && rec.targetExternalLoad !== null) {
+      if (isAttempt && rec.attemptLoads) {
+        const loads = rec.attemptLoads;
+        if (slot.role === "warmup") loadStr = `<span class="program-slot-load" style="color:var(--muted)">Lämmittely</span>`;
+        else if (slot.role === "opener") loadStr = `<span class="program-slot-load" style="color:var(--ok)">+${loads.opener} kg</span>`;
+        else if (slot.role === "attempt2") loadStr = `<span class="program-slot-load" style="color:var(--warn)">+${loads.second} kg</span>`;
+        else if (slot.role === "attempt3") loadStr = `<span class="program-slot-load" style="color:var(--bad)">+${loads.third} kg 🎯</span>`;
+      } else if (isPrimary && rec.targetExternalLoad !== null) {
         loadStr = `<span class="program-slot-load">+${rec.targetExternalLoad} kg</span>`;
       } else if (isBackoff && rec.targetExternalLoad !== null) {
         loadStr = `<span class="program-slot-load" style="color:var(--muted)">+${roundToHalf(rec.targetExternalLoad * 0.85)} kg</span>`;
       }
       const setsReps = `${slot.sets}×${slot.reps}`;
       const vxStr = slot.targetVx !== null ? ` V${slot.targetVx}` : "";
-      const icon = isPrimary ? "⭐ " : isBackoff ? "↩ " : "";
+      const icon = isPrimary ? "⭐ " : isBackoff ? "↩ " : isAttempt ? "🏆 " : "";
+      const variantStr = slot.variantName && (isPrimary || isBackoff) ? `<div class="muted" style="font-size:11px">${slot.variantName}</div>` : "";
       return `<div class="program-slot">
         <span class="program-slot-num">${i + 1}.</span>
-        <span class="program-slot-name">${icon}${movName}</span>
+        <span class="program-slot-name">${icon}${movName}${variantStr}</span>
         <div class="program-slot-detail">
           <span class="program-slot-sets">${setsReps}${vxStr}</span><br>
           ${loadStr}
@@ -512,7 +533,10 @@ function renderDashboard() {
         <div style="font-size:20px;font-weight:700">${dayTypeLabels[dayType] || dayType}</div>
         <div class="muted">Viikko ${weekNum} / ${weekLabel}</div>
       </div>
-      <div class="chip ${readinessClass}">${readinessEmoji} ${r.combined || "?"}</div>
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
+        ${isPeaking ? '<div class="chip" style="color:var(--warn);border-color:var(--warn);font-size:11px">🏆 PEAKING</div>' : ''}
+        <div class="chip ${readinessClass}">${readinessEmoji} ${r.combined || "?"}</div>
+      </div>
     </div>
 
     ${breakHTML}
@@ -629,7 +653,11 @@ function renderFutureWorkoutsPreview() {
         <span style="font-weight:600">${dayNames[fw.dayOfWeek]} ${fw.dateISO.slice(5)}</span>
         <span class="muted">${fw.dayType} — Vk ${fw.weekNum} ${fw.weekLabel}</span>
       </div>
-      <div class="muted">${fw.slots.map(s => `${s.role === "primary" ? "⭐" : s.role === "backoff" ? "↩" : "•"} ${s.defaultMovementName} ${s.sets}×${s.reps}`).join(" | ")}</div>
+      <div class="muted">${fw.slots.map(s => {
+        const icon = s.role === "primary" ? "⭐" : s.role === "backoff" ? "↩" : ["warmup","opener","attempt2","attempt3"].includes(s.role) ? "🏆" : "•";
+        const vName = s.variantName ? ` (${s.variantName.split(" ")[0]})` : "";
+        return `${icon} ${s.defaultMovementName}${vName} ${s.sets}×${s.reps}`;
+      }).join(" | ")}</div>
     </div>`).join("")}
     <button class="btn btn-sm btn-outline btn-full mt" data-nav="mesocycle">Näytä kaikki →</button>
   </div>`;
@@ -769,9 +797,10 @@ function renderActiveWorkout() {
         <div>
           <div class="exercise-name" id="btn-swap-exercise">🔄 ${exercise.name}</div>
           <div class="exercise-meta">
-            ${exercise.role === "primary" ? "⭐ Pääliike" : exercise.role === "backoff" ? "↩ Back-off" : exercise.category}
+            ${exercise.role === "primary" ? "⭐ Pääliike" : exercise.role === "backoff" ? "↩ Back-off" : ["warmup","opener","attempt2","attempt3"].includes(exercise.role) ? "🏆 " + (exercise.role === "warmup" ? "Lämmittely" : exercise.role === "opener" ? "1. yritys" : exercise.role === "attempt2" ? "2. yritys" : "3. yritys") : exercise.category}
             ${isLoadIncrease ? ' <span class="text-ok">↑ Progressio</span>' : ""}
           </div>
+          ${exercise.variantName ? `<div class="muted" style="font-size:11px;margin-top:2px">🔀 ${exercise.variantName}${exercise.tempoNote ? ` — <strong>${exercise.tempoNote}</strong>` : ""}</div>` : ""}
         </div>
       </div>
 
@@ -812,6 +841,7 @@ function renderActiveWorkout() {
       <button class="btn btn-outline btn-full mt" id="btn-add-set" style="font-size:13px">+ Lisäsarja</button>
     </div>
 
+    ${(exercise.role === "primary" || exercise.role === "backoff") && exercise.category === "vertikaaliveto" ? '<button class="btn btn-outline btn-full mt" id="btn-swap-variant" style="font-size:13px">🔀 Vaihda variaatio</button>' : ""}
     <button class="btn btn-outline btn-full mt" id="btn-add-exercise" style="font-size:14px">+ Lisää liike</button>
   </div>`;
 }
@@ -901,10 +931,12 @@ function renderWorkoutSummary() {
       const exE1RM = isPri
         ? e1rmExternal(bw, completedSets[0].loadKg || 0, completedSets[0].reps || 3, completedSets[0].actualVx ?? 2)
         : e1rmAccessory(completedSets[0].loadKg || 0, completedSets[0].reps || 3);
-      const icon = ex.role === "primary" ? "⭐ " : ex.role === "backoff" ? "↩ " : "";
+      const isAttempt = ["warmup","opener","attempt2","attempt3"].includes(ex.role);
+      const icon = ex.role === "primary" ? "⭐ " : ex.role === "backoff" ? "↩ " : isAttempt ? "🏆 " : "";
+      const attemptLabel = isAttempt ? ` (${ex.role === "warmup" ? "Lämmittely" : ex.role === "opener" ? "1. yritys" : ex.role === "attempt2" ? "2. yritys" : "3. yritys"})` : "";
       return `<div class="card">
         <div class="flex-between">
-          <div style="font-weight:600">${icon}${ex.name}</div>
+          <div style="font-weight:600">${icon}${ex.name}${attemptLabel}</div>
           ${exE1RM !== null ? `<span class="muted">e1RM: ${exE1RM.toFixed(1)} kg</span>` : ""}
         </div>
         ${completedSets.map(s =>
@@ -941,7 +973,10 @@ function renderMesocycle() {
           <div style="font-weight:600">Aloitus: ${formatDateShort(meso.startDateISO)}</div>
           <div class="muted">${meso.weekCount} viikkoa</div>
         </div>
-        <div class="chip">${currentWeek ? `Viikko ${currentWeek}` : "Päättynyt"}</div>
+        <div style="display:flex;gap:4px;align-items:center">
+          ${meso.type === "peaking" ? '<span class="chip" style="color:var(--warn);border-color:var(--warn);font-size:11px">🏆 PEAKING</span>' : ''}
+          <div class="chip">${currentWeek ? `Viikko ${currentWeek}` : "Päättynyt"}</div>
+        </div>
       </div>
     </div>
 
@@ -969,15 +1004,20 @@ function renderMesocycle() {
           <span class="chip" style="font-size:11px">${fw.dayType}</span>
         </div>
         <div style="margin-top:6px">
-          ${fw.slots.map((s, i) => `<div class="flex-between" style="padding:3px 0">
-            <span class="muted">${s.role === "primary" ? "⭐" : s.role === "backoff" ? "↩" : `${i + 1}.`} ${s.defaultMovementName}</span>
+          ${fw.slots.map((s, i) => {
+            const icon = s.role === "primary" ? "⭐" : s.role === "backoff" ? "↩" : ["warmup","opener","attempt2","attempt3"].includes(s.role) ? "🏆" : `${i + 1}.`;
+            const vTag = s.variantName ? ` <span style="color:var(--acc);font-size:10px">[${s.variantName.split("(")[0].trim().split(" ")[0]}]</span>` : "";
+            return `<div class="flex-between" style="padding:3px 0">
+            <span class="muted">${icon} ${s.defaultMovementName}${vTag}</span>
             <span class="muted">${s.sets}×${s.reps}${s.targetVx !== null ? ` V${s.targetVx}` : ""}</span>
-          </div>`).join("")}
+          </div>`;
+          }).join("")}
         </div>
       </div>`).join("")}
     </div>` : ""}
 
     <button class="btn btn-outline btn-full mt" id="btn-new-meso">Aloita uusi mesosykli</button>
+    ${meso.type !== "peaking" ? '<button class="btn btn-full mt" id="btn-start-peaking" style="background:var(--warn);color:#000;font-weight:700">🏆 Aloita Peaking-ohjelma</button>' : ''}
   </div>`;
 }
 
@@ -990,7 +1030,11 @@ function renderWeekPlanDays(meso, weekNum, dayNames) {
         <span style="font-size:13px;font-weight:600">${dayNames[d.dayOfWeek]} — ${d.dayType}</span>
         <button class="btn btn-sm btn-outline" data-edit-day="${weekNum}-${d.dayOfWeek}" style="font-size:11px;padding:4px 8px;min-height:28px">✏️</button>
       </div>
-      <div class="muted" style="font-size:12px">${d.slots.map(s => `${s.role === "primary" ? "⭐" : s.role === "backoff" ? "↩" : "•"} ${s.defaultMovementName} ${s.sets}×${s.reps}`).join(" | ")}</div>
+      <div class="muted" style="font-size:12px">${d.slots.map(s => {
+        const icon = s.role === "primary" ? "⭐" : s.role === "backoff" ? "↩" : ["warmup","opener","attempt2","attempt3"].includes(s.role) ? "🏆" : "•";
+        const vTag = s.variantName ? ` [${s.variantName.split("(")[0].trim().split(" ")[0]}]` : "";
+        return `${icon} ${s.defaultMovementName}${vTag} ${s.sets}×${s.reps}`;
+      }).join(" | ")}</div>
     </div>`).join("")}
   </div>`;
 }
@@ -1231,7 +1275,7 @@ function renderSettingsView() {
     <div class="card">
       <div class="card-title">Diagnostiikka</div>
       <div class="muted">
-        Versio: 2.1.0 | Schema: 3<br>
+        Versio: 2.2.0 | Schema: 3<br>
         Sessioita: ${state.sessions.length} | Sarjoja: ${state.allSets.length}<br>
         Liikkeitä: ${state.movements.length}
       </div>
@@ -1314,10 +1358,36 @@ function bind() {
   const newMesoBtn = $("#btn-new-meso");
   if (newMesoBtn) newMesoBtn.addEventListener("click", async () => {
     const meso = createDefaultMesocycle(todayISO());
+    // Assign variant rotation to the new mesocycle
+    assignVariantRotation(meso.weekPlans);
     await saveMesocycle(meso);
     state.mesocycle = meso;
     await computeRecommendation();
     showToast("Uusi mesosykli aloitettu", "ok");
+    render();
+  });
+
+  // Start peaking program
+  const peakingBtn = $("#btn-start-peaking");
+  if (peakingBtn) peakingBtn.addEventListener("click", async () => {
+    const bw = state.settings?.bodyweightKg || 91;
+    // Get current e1RM external
+    const primaryMov = state.movements.find(m => m.isPrimary);
+    let e1rmExt = 93;
+    if (primaryMov) {
+      const sets = state.allSets.filter(s => s.movementId === primaryMov.movementId);
+      const computed = computeMovementE1RM(sets, true, bw);
+      if (computed !== null) e1rmExt = Math.max(0, computed - bw);
+    }
+
+    const confirmMsg = `🏆 Peaking-ohjelma (4 viikkoa)\n\nNykyinen e1RM: +${e1rmExt.toFixed(1)} kg\n\nOpener (92%): +${roundToHalf(e1rmExt * 0.92)} kg\n2. yritys (97%): +${roundToHalf(e1rmExt * 0.97)} kg\n3. yritys (102%): +${roundToHalf(e1rmExt * 1.02)} kg\n\nAloitetaanko peaking?`;
+    if (!confirm(confirmMsg)) return;
+
+    const peakMeso = createPeakingMesocycle(todayISO(), e1rmExt, bw);
+    await saveMesocycle(peakMeso);
+    state.mesocycle = peakMeso;
+    await computeRecommendation();
+    showToast("🏆 Peaking-ohjelma aloitettu!", "ok", 4000);
     render();
   });
 
@@ -1565,14 +1635,30 @@ async function startWorkout() {
       const mov = state.movements.find(m => m.name === slot.defaultMovementName);
       const movId = mov?.movementId || null;
       const isPrimary = slot.role === "primary";
+      const isAttempt = ["warmup", "opener", "attempt2", "attempt3"].includes(slot.role);
 
       let loadKg;
       const isBackoff = slot.role === "backoff";
-      if (isPrimary && rec.targetExternalLoad !== null) {
-        loadKg = rec.targetExternalLoad;
+
+      // Competition day: use computed attempt loads
+      if (isAttempt && rec.attemptLoads) {
+        if (slot.role === "warmup" && Array.isArray(slot.loadPctE1RM)) {
+          // Warmup sets use slot-level percentages (handled per-set below)
+          loadKg = rec.attemptLoads.warmupLoads[0] || 0;
+        } else if (slot.role === "opener") {
+          loadKg = rec.attemptLoads.opener;
+        } else if (slot.role === "attempt2") {
+          loadKg = rec.attemptLoads.second;
+        } else if (slot.role === "attempt3") {
+          loadKg = rec.attemptLoads.third;
+        }
+      } else if (isPrimary && rec.targetExternalLoad !== null) {
+        // Apply variant load modifier
+        const vMod = variantLoadModifier(slot.variantName);
+        loadKg = roundToHalf(rec.targetExternalLoad * (1 + vMod));
       } else if (isBackoff && rec.targetExternalLoad !== null) {
-        // Back-off: ~85-90% of top-set load
-        loadKg = roundToHalf(rec.targetExternalLoad * 0.85);
+        const vMod = variantLoadModifier(slot.variantName);
+        loadKg = roundToHalf(rec.targetExternalLoad * 0.85 * (1 + vMod));
       } else if (mov) {
         // Get movement progress for accessory
         const progress = await getMovementProgress(movId);
@@ -1590,24 +1676,38 @@ async function startWorkout() {
       const progressInfo = mov ? await getMovementProgress(movId) : null;
       const progressSuggestion = progressInfo?.suggestedAction || "hold";
 
+      // Variant tempo override
+      const vOverride = variantRepOverride(slot.variantName);
+
+      // Build per-set loads (warmup sets have different loads)
+      const setsList = Array.from({ length: slot.sets }, (_, i) => {
+        let setLoad = loadKg;
+        if (isAttempt && slot.role === "warmup" && rec.attemptLoads) {
+          setLoad = rec.attemptLoads.warmupLoads[i] || loadKg;
+        }
+        return {
+          idx: i,
+          targetReps: slot.reps,
+          targetVx: slot.targetVx,
+          loadKg: setLoad,
+          reps: null,
+          actualVx: null,
+          velocity: null,
+          completed: false,
+        };
+      });
+
       exercises.push({
         movementId: movId,
         name: slot.defaultMovementName || slot.category,
         category: slot.category,
         originalCategory: slot.category,
         role: slot.role,
+        variantName: slot.variantName || null,
+        tempoNote: vOverride?.tempoNote || null,
         loadKg,
         progressSuggestion,
-        sets: Array.from({ length: slot.sets }, (_, i) => ({
-          idx: i,
-          targetReps: slot.reps,
-          targetVx: slot.targetVx,
-          loadKg,
-          reps: null,
-          actualVx: null,
-          velocity: null,
-          completed: false,
-        })),
+        sets: setsList,
       });
     }
   } else {
@@ -1807,6 +1907,36 @@ function bindWorkoutEvents() {
     }
   });
 
+  // Swap variant
+  const swapVarBtn = $("#btn-swap-variant");
+  if (swapVarBtn) swapVarBtn.addEventListener("click", () => {
+    const exercise = w.exercises[w.currentExerciseIdx];
+    if (!exercise) return;
+    const allVariantNames = ["Kilpaveto (leveä myötäote)", "Korokeveto", "Nopeusveto kuminauhalla", "Myötäoteveto", "Neutraaliote", "2s ylipito", "1.5-toisto hiissaus"];
+    const choice = prompt(
+      `Vaihda variaatio:\n${allVariantNames.map((v, i) => `${i + 1}. ${v}${v === exercise.variantName ? " ✓" : ""}`).join("\n")}\n\nSyötä numero:`,
+      "1"
+    );
+    const idx = parseInt(choice) - 1;
+    if (idx >= 0 && idx < allVariantNames.length) {
+      const newVariant = allVariantNames[idx];
+      exercise.variantName = newVariant;
+      const vOverride = variantRepOverride(newVariant);
+      exercise.tempoNote = vOverride?.tempoNote || null;
+      // Recalculate remaining set loads with new variant modifier
+      const vMod = variantLoadModifier(newVariant);
+      const rec = state.recommendation;
+      if (rec?.targetExternalLoad !== null && (exercise.role === "primary" || exercise.role === "backoff")) {
+        const basePct = exercise.role === "backoff" ? 0.85 : 1.0;
+        const newLoad = roundToHalf(rec.targetExternalLoad * basePct * (1 + vMod));
+        exercise.sets.forEach(s => { if (!s.completed) s.loadKg = newLoad; });
+        exercise.loadKg = newLoad;
+      }
+      showToast(`Variaatio: ${newVariant}`, "ok");
+      render();
+    }
+  });
+
   // Skip exercise
   const skipBtn = $("#btn-skip-exercise");
   if (skipBtn) skipBtn.addEventListener("click", () => {
@@ -1897,6 +2027,15 @@ async function saveWorkoutToDb() {
   };
   await saveSession(session);
 
+  // Resolve variant IDs
+  const variantCache = {};
+  for (const exercise of w.exercises) {
+    if (exercise.variantName && !variantCache[exercise.variantName]) {
+      const v = await getVariantByName(exercise.variantName);
+      variantCache[exercise.variantName] = v?.variantId || null;
+    }
+  }
+
   // Save sets
   const sets = [];
   for (const exercise of w.exercises) {
@@ -1906,7 +2045,7 @@ async function saveWorkoutToDb() {
         setId: uid(),
         sessionId: w.sessionId,
         movementId: exercise.movementId,
-        variantId: null,
+        variantId: variantCache[exercise.variantName] || null,
         setRole: exercise.role === "primary" ? "top" : exercise.role === "backoff" ? "backoff" : "accessory",
         externalLoadKg: s.loadKg,
         reps: s.reps,

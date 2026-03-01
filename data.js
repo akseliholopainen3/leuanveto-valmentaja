@@ -77,11 +77,21 @@ const PRESET_MOVEMENTS = [
 
 // ── Primary variants ──
 const PRIMARY_VARIANTS = [
-  { name: "Kilpaveto (leveä myötäote)", movementName: "Lisäpainoleuanveto", isDefault: true },
-  { name: "Korokeveto", movementName: "Lisäpainoleuanveto", isDefault: false },
-  { name: "Nopeusveto kuminauhalla", movementName: "Lisäpainoleuanveto", isDefault: false },
-  { name: "Myötäoteveto", movementName: "Lisäpainoleuanveto", isDefault: false },
+  { name: "Kilpaveto (leveä myötäote)", movementName: "Lisäpainoleuanveto", isDefault: true, tags: ["competition", "heavy"] },
+  { name: "Korokeveto", movementName: "Lisäpainoleuanveto", isDefault: false, tags: ["supramaximal", "heavy"] },
+  { name: "Nopeusveto kuminauhalla", movementName: "Lisäpainoleuanveto", isDefault: false, tags: ["speed", "explosive"] },
+  { name: "Myötäoteveto", movementName: "Lisäpainoleuanveto", isDefault: false, tags: ["grip", "volume"] },
+  { name: "Neutraaliote", movementName: "Lisäpainoleuanveto", isDefault: false, tags: ["grip", "volume"] },
+  { name: "2s ylipito", movementName: "Lisäpainoleuanveto", isDefault: false, tags: ["isometric", "volume"] },
+  { name: "1.5-toisto hiissaus", movementName: "Lisäpainoleuanveto", isDefault: false, tags: ["tempo", "volume"] },
 ];
+
+// ── Variant ↔ day type mapping ──
+const VARIANT_DAY_TYPE_MAP = {
+  heavy: ["Kilpaveto (leveä myötäote)", "Korokeveto"],
+  speed: ["Nopeusveto kuminauhalla"],
+  volume: ["Myötäoteveto", "Neutraaliote", "2s ylipito", "1.5-toisto hiissaus"],
+};
 
 // ── Utility ──
 function uid() {
@@ -785,6 +795,7 @@ async function importHistoricalCSV(text, columnMapping) {
 function createDefaultMesocycle(startDateISO) {
   return {
     mesocycleId: uid(),
+    type: "default",
     startDateISO: startDateISO || todayISO(),
     weekCount: 4,
     weekDefs: [
@@ -930,11 +941,169 @@ function createDefaultMesocycle(startDateISO) {
   };
 }
 
+// ── Peaking mesocycle (4-week competition prep) ──
+function createPeakingMesocycle(startDateISO, e1rmExternal, bodyweightKg) {
+  const e1rm = e1rmExternal || 93;
+  const bw = bodyweightKg || 91;
+
+  // Peaking config for attempt calculation
+  const peakingConfig = {
+    e1rmExternal: e1rm,
+    bodyweightKg: bw,
+    openerPct: 0.92,    // ~92% of e1RM as opener
+    secondPct: 0.97,    // ~97% for 2nd attempt
+    thirdPct: 1.02,     // ~102% for 3rd attempt (PR attempt)
+    warmupPcts: [0.40, 0.60, 0.75, 0.85],
+  };
+
+  return {
+    mesocycleId: uid(),
+    type: "peaking",
+    startDateISO: startDateISO || todayISO(),
+    weekCount: 4,
+    peakingConfig,
+    weekDefs: [
+      { week: 1, deltaPctBase: 0.02, label: "Intensification", heavyReps: 2, heavyTargetVx: 1 },
+      { week: 2, deltaPctBase: 0.04, label: "Realization", heavyReps: 1, heavyTargetVx: 0 },
+      { week: 3, deltaPctBase: -0.15, label: "Taper", heavyReps: 2, heavyTargetVx: 3 },
+      { week: 4, deltaPctBase: 0, label: "Kilpailu", heavyReps: 1, heavyTargetVx: 0 },
+    ],
+    weekPlans: [
+      // Week 1: Intensification — 5×2 V1 + backoff + reduced accessories
+      {
+        week: 1,
+        days: [
+          {
+            dayOfWeek: 1, dayType: "heavy",
+            slots: [
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä myötäote)", sets: 5, reps: 2, targetVx: 1 },
+              { role: "backoff", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto (back-off)", variantName: "Kilpaveto (leveä myötäote)", sets: 3, reps: 4, targetVx: 2 },
+              { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 3, reps: 5, targetVx: 2 },
+              { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto", sets: 3, reps: 6, targetVx: 3 },
+            ],
+          },
+          {
+            dayOfWeek: 4, dayType: "volume",
+            slots: [
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä myötäote)", sets: 4, reps: 4, targetVx: 2 },
+              { role: "accessory", category: "vertikaalityöntö", defaultMovementName: "Pystypunnerrus", sets: 3, reps: 6, targetVx: 3 },
+            ],
+          },
+        ],
+      },
+      // Week 2: Realization — 4×1 V0 + mini-backoff
+      {
+        week: 2,
+        days: [
+          {
+            dayOfWeek: 1, dayType: "heavy",
+            slots: [
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä myötäote)", sets: 4, reps: 1, targetVx: 0 },
+              { role: "backoff", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto (back-off)", variantName: "Kilpaveto (leveä myötäote)", sets: 2, reps: 3, targetVx: 2 },
+              { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 3, reps: 5, targetVx: 2 },
+            ],
+          },
+          {
+            dayOfWeek: 4, dayType: "volume",
+            slots: [
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä myötäote)", sets: 3, reps: 3, targetVx: 2 },
+              { role: "accessory", category: "vertikaalityöntö", defaultMovementName: "Pystypunnerrus", sets: 3, reps: 6, targetVx: 3 },
+            ],
+          },
+        ],
+      },
+      // Week 3: Taper — light, 3×2 V3, no accessories
+      {
+        week: 3,
+        days: [
+          {
+            dayOfWeek: 1, dayType: "heavy",
+            slots: [
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä myötäote)", sets: 3, reps: 2, targetVx: 3 },
+            ],
+          },
+          {
+            dayOfWeek: 4, dayType: "volume",
+            slots: [
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä myötäote)", sets: 2, reps: 3, targetVx: 4 },
+            ],
+          },
+        ],
+      },
+      // Week 4: Competition — Monday opener, Friday competition
+      {
+        week: 4,
+        days: [
+          {
+            dayOfWeek: 1, dayType: "heavy",
+            slots: [
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä myötäote)", sets: 2, reps: 2, targetVx: 4 },
+            ],
+          },
+          {
+            dayOfWeek: 5, dayType: "competition",
+            slots: [
+              { role: "warmup", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä myötäote)", sets: 4, reps: 1, targetVx: null, loadPctE1RM: [0.40, 0.60, 0.75, 0.85] },
+              { role: "opener", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä myötäote)", sets: 1, reps: 1, targetVx: 0, loadPctE1RM: 0.92 },
+              { role: "attempt2", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä myötäote)", sets: 1, reps: 1, targetVx: 0, loadPctE1RM: 0.97 },
+              { role: "attempt3", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä myötäote)", sets: 1, reps: 1, targetVx: 0, loadPctE1RM: 1.02 },
+            ],
+          },
+        ],
+      },
+    ],
+    postCycleAnalysis: null,
+  };
+}
+
+// ── Ensure all variant presets exist (migration) ──
+async function ensureAllVariantsSeeded() {
+  const movements = await dbGetAll(STORES.movements);
+  const primaryMov = movements.find(m => m.isPrimary);
+  if (!primaryMov) return;
+
+  const existingVariants = await dbGetByIndex(STORES.variants, "movementId", primaryMov.movementId);
+  const existingNames = new Set(existingVariants.map(v => v.name));
+
+  const toAdd = PRIMARY_VARIANTS.filter(pv => !existingNames.has(pv.name));
+  if (toAdd.length === 0) return;
+
+  const newVariants = toAdd.map(v => ({
+    variantId: uid(),
+    movementId: primaryMov.movementId,
+    name: v.name,
+    isDefault: v.isDefault,
+    tags: v.tags || [],
+    notes: "",
+  }));
+  await dbPutBulk(STORES.variants, newVariants);
+
+  // Also update existing variants to include tags if missing
+  for (const ev of existingVariants) {
+    const preset = PRIMARY_VARIANTS.find(pv => pv.name === ev.name);
+    if (preset && (!ev.tags || ev.tags.length === 0)) {
+      ev.tags = preset.tags || [];
+      await dbPut(STORES.variants, ev);
+    }
+  }
+}
+
+// ── Variant helpers ──
+async function getVariantByName(name) {
+  const allVariants = await dbGetAll(STORES.variants);
+  return allVariants.find(v => v.name === name) || null;
+}
+
+async function getAllVariants() {
+  return dbGetAll(STORES.variants);
+}
+
 // ── Initialize database ──
 async function initDB() {
   await openDB();
   if (_db) {
     await seedPresets();
+    await ensureAllVariantsSeeded();
     await updateLastOpened();
   }
   return _db;
@@ -951,6 +1120,7 @@ export {
   PULL_VOLUME_CATEGORIES,
   PRESET_MOVEMENTS,
   PRIMARY_VARIANTS,
+  VARIANT_DAY_TYPE_MAP,
   // Utilities
   uid,
   nowISO,
@@ -986,6 +1156,9 @@ export {
   // Variants
   getVariantsForMovement,
   addVariant,
+  getVariantByName,
+  getAllVariants,
+  ensureAllVariantsSeeded,
   // Sessions
   getAllSessions,
   getSession,
@@ -1007,6 +1180,7 @@ export {
   getActiveMesocycle,
   saveMesocycle,
   createDefaultMesocycle,
+  createPeakingMesocycle,
   // Baselines
   getBaseline,
   saveBaseline,

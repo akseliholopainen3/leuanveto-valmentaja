@@ -4,13 +4,14 @@
 import {
   uid, todayISO, parseNumericInput,
   getAllSessions, getSetsForSession, getAllSets, getSetsForMovement,
-  getActiveMesocycle, saveMesocycle, createDefaultMesocycle,
+  getActiveMesocycle, saveMesocycle, createDefaultMesocycle, createPeakingMesocycle,
   getSettings, saveBaseline, getBaseline,
   saveRecommendation, saveDecisionTrace,
   getAllMovements, getMovementProgress, saveMovementProgress,
   getMeasurementsByType,
   getAllMesocycles,
   PULL_VOLUME_CATEGORIES,
+  VARIANT_DAY_TYPE_MAP,
 } from "./data.js";
 
 // ═══════════════════════════════════════════════════════════════
@@ -21,6 +22,7 @@ const DAY_TYPE_MULTIPLIERS = {
   heavy: 1.0,
   volume: 0.6,
   speed: 0.4,
+  competition: 1.0,
   accessory: 0.0,
   rest: 0,
 };
@@ -35,6 +37,7 @@ const REST_RECOMMENDATIONS = {
   heavy: { minSec: 180, maxSec: 300, label: "3–5 min" },
   volume: { minSec: 120, maxSec: 180, label: "2–3 min" },
   speed: { minSec: 90, maxSec: 120, label: "1.5–2 min" },
+  competition: { minSec: 300, maxSec: 600, label: "5–10 min" },
   accessory: { minSec: 60, maxSec: 120, label: "1–2 min" },
 };
 
@@ -634,6 +637,11 @@ async function recommend(options = {}) {
     trace("MESOCYCLE_CREATED", {}, { mesocycleId: mesocycle.mesocycleId }, "Uusi mesosykli luotu automaattisesti");
   }
 
+  // 1b. Delegate peaking mesocycles to dedicated engine
+  if (mesocycle.type === "peaking") {
+    return recommendPeaking({ ...options, mesocycle });
+  }
+
   // 2. Determine week and day
   let weekNum = getMesocycleWeek(mesocycle, dateISO);
   if (weekNum === null) {
@@ -834,6 +842,7 @@ async function recommend(options = {}) {
     recId: uid(),
     dateISO,
     mesocycleId: mesocycle.mesocycleId,
+    mesocycleType: mesocycle.type || "default",
     weekNum,
     weekLabel: weekDef?.label || "?",
     dayType,
@@ -1239,6 +1248,263 @@ function computeMovementE1RMHistory(movementSets, sessions, isPrimary, bodyweigh
 }
 
 // ═══════════════════════════════════════════════════════════════
+// VARIANT PERIODIZATION
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Get default variant name for a given day type.
+ */
+function getDefaultVariantForDayType(dayType) {
+  const variants = VARIANT_DAY_TYPE_MAP[dayType] || VARIANT_DAY_TYPE_MAP.heavy;
+  return variants[0]; // First variant is default
+}
+
+/**
+ * Load modifier for each variant.
+ * Returns a multiplier to apply to target load.
+ * e.g., koroke = +5% (supramaximal eccentric), kuminauha = -40% (speed work)
+ */
+function variantLoadModifier(variantName) {
+  if (!variantName) return 0;
+  switch (variantName) {
+    case "Korokeveto":              return 0.05;    // +5% supramaximal
+    case "Nopeusveto kuminauhalla": return -0.40;   // -40% speed
+    case "Myötäoteveto":            return -0.05;   // -5% grip weakness
+    case "Neutraaliote":            return -0.03;   // -3% grip neutral
+    case "2s ylipito":              return -0.05;   // -5% isometric hold
+    case "1.5-toisto hiissaus":     return -0.10;   // -10% tempo reps
+    default:                        return 0;       // Kilpaveto = baseline
+  }
+}
+
+/**
+ * Rep/tempo override for specific variants.
+ * Returns override info (repsLabel, tempoNotes) or null.
+ */
+function variantRepOverride(variantName) {
+  switch (variantName) {
+    case "2s ylipito":
+      return { tempoNote: "2s pito yläasennossa", label: "ylipito" };
+    case "1.5-toisto hiissaus":
+      return { tempoNote: "1.5 toistoa: ylös → puoleen väliin → ylös", label: "hiissaus" };
+    case "Nopeusveto kuminauhalla":
+      return { tempoNote: "Räjähtävästi, max nopeus", label: "nopeus" };
+    case "Korokeveto":
+      return { tempoNote: "Eksentrisesti hitaasti (3-4s)", label: "koroke" };
+    default:
+      return null;
+  }
+}
+
+/**
+ * Assign variants to mesocycle week plans via smart rotation.
+ * Heavy days rotate: Kilpaveto ↔ Korokeveto
+ * Speed days: always Nopeusveto kuminauhalla
+ * Volume days: rotate through Myötäote → Neutraaliote → 2s ylipito → 1.5-toisto hiissaus
+ */
+function assignVariantRotation(weekPlans) {
+  let heavyIdx = 0;
+  let volumeIdx = 0;
+  const heavyVariants = VARIANT_DAY_TYPE_MAP.heavy;
+  const volumeVariants = VARIANT_DAY_TYPE_MAP.volume;
+  const speedVariant = VARIANT_DAY_TYPE_MAP.speed[0];
+
+  for (const wp of weekPlans) {
+    for (const day of wp.days) {
+      for (const slot of day.slots) {
+        if (slot.role !== "primary" && slot.role !== "backoff") continue;
+        if (slot.category !== "vertikaaliveto") continue;
+
+        if (day.dayType === "heavy") {
+          slot.variantName = heavyVariants[heavyIdx % heavyVariants.length];
+          // backoff uses same variant as primary
+          if (slot.role === "primary") heavyIdx++;
+        } else if (day.dayType === "speed") {
+          slot.variantName = speedVariant;
+        } else if (day.dayType === "volume") {
+          slot.variantName = volumeVariants[volumeIdx % volumeVariants.length];
+          if (slot.role === "primary") volumeIdx++;
+        } else {
+          slot.variantName = heavyVariants[0]; // default
+        }
+      }
+    }
+  }
+  return weekPlans;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PEAKING ENGINE
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Compute attempt loads for competition day.
+ * Returns { warmupLoads: [...], opener, second, third } in external kg.
+ */
+function computeAttemptLoads(e1rmExternal, bw, peakingConfig) {
+  if (!e1rmExternal || !peakingConfig) return null;
+
+  const warmupLoads = (peakingConfig.warmupPcts || [0.40, 0.60, 0.75, 0.85]).map(pct =>
+    roundToHalf(Math.max(0, e1rmExternal * pct))
+  );
+
+  return {
+    warmupLoads,
+    opener: roundToHalf(e1rmExternal * (peakingConfig.openerPct || 0.92)),
+    second: roundToHalf(e1rmExternal * (peakingConfig.secondPct || 0.97)),
+    third: roundToHalf(e1rmExternal * (peakingConfig.thirdPct || 1.02)),
+    e1rmExternal,
+  };
+}
+
+/**
+ * Recommend function specifically for peaking mesocycles.
+ * Key differences from normal recommend():
+ * - No readiness caps (athlete decides)
+ * - Competition day: enriches slots with computed loads
+ * - Normal peaking days: load from weekDef deltaPctBase
+ */
+async function recommendPeaking(options = {}) {
+  const settings = options.settings || (await getSettings());
+  const bodyweightKg = options.bodyweightKg || settings.bodyweightKg || 91;
+  const dateISO = options.dateISO || todayISO();
+  const mesocycle = options.mesocycle;
+
+  if (!mesocycle || mesocycle.type !== "peaking") {
+    return recommend(options); // fallback to normal
+  }
+
+  const traces = [];
+  function trace(ruleId, before, after, why) {
+    traces.push({ traceId: uid(), recId: null, ruleId, before: { ...before }, after: { ...after }, why });
+  }
+
+  // Determine week
+  let weekNum = getMesocycleWeek(mesocycle, dateISO);
+  if (weekNum === null) {
+    // Past end → create new default mesocycle with -5% deload start
+    const newMeso = createDefaultMesocycle(dateISO);
+    newMeso.weekDefs[0].deltaPctBase = -0.05;
+    if (!options.dryRun) await saveMesocycle(newMeso);
+    trace("PEAKING_TRANSITION", {}, { type: "default" }, "Peaking päättynyt → normaali mesosykli (-5% start)");
+    // Return a rec for the new mesocycle
+    return recommend({ ...options, mesocycle: newMeso });
+  }
+
+  const weekDef = getWeekDef(mesocycle, weekNum);
+  const dayOfWeek = new Date(dateISO).getDay() || 7;
+  const dayPlan = getTodayPlan(mesocycle, weekNum, dayOfWeek);
+  const dayType = dayPlan?.dayType || "heavy";
+
+  trace("PEAKING_PHASE", {}, { weekNum, dayType, label: weekDef?.label },
+    `PEAKING Vk ${weekNum}: ${weekDef?.label || "?"}`);
+
+  // e1RM from sets
+  const allSets = options.allSets || (await getAllSets());
+  const primaryMovementId = options.primaryMovementId || null;
+  const topSets = allSets
+    .filter(s => {
+      if (primaryMovementId && s.movementId !== primaryMovementId) return false;
+      return s.setRole === "top" || s.setRole === "readiness_test";
+    })
+    .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
+
+  const recentTopSets = topSets.slice(-6);
+  const e1rmValues = recentTopSets
+    .map(s => {
+      const vara = s.actualVx ?? s.targetVx ?? 2;
+      return e1rmSystem(bodyweightKg, s.externalLoadKg || 0, s.reps || s.targetReps || 3, vara);
+    })
+    .filter(v => v !== null);
+
+  const currentE1RMSystem = e1rmValues.length > 0 ? median(e1rmValues) : null;
+  const currentE1RMExternal = currentE1RMSystem !== null ? Math.max(0, currentE1RMSystem - bodyweightKg) : null;
+
+  // Use peakingConfig e1RM if no computed e1RM
+  const useE1RM = currentE1RMExternal || mesocycle.peakingConfig?.e1rmExternal || 93;
+
+  trace("PEAKING_E1RM", {}, {
+    e1rmExternal: useE1RM.toFixed(1),
+    source: currentE1RMExternal ? "computed" : "peakingConfig",
+  }, `Peaking e1RM: ${useE1RM.toFixed(1)} kg`);
+
+  // Competition day: compute attempt loads
+  let attemptLoads = null;
+  if (dayType === "competition") {
+    attemptLoads = computeAttemptLoads(useE1RM, bodyweightKg, mesocycle.peakingConfig);
+    trace("COMPETITION_LOADS", {}, attemptLoads, "Kilpailukuormat laskettu");
+  }
+
+  // Normal peaking day: compute load from weekDef
+  const deltaPct = weekDef?.deltaPctBase || 0;
+  let targetReps = weekDef?.heavyReps || 2;
+  let targetVx = weekDef?.heavyTargetVx || 1;
+  if (dayType === "volume") {
+    targetReps = Math.max(3, targetReps + 2);
+    targetVx = Math.min(4, targetVx + 1);
+  }
+
+  let targetExternalLoad;
+  if (currentE1RMSystem !== null) {
+    const effectiveReps = targetReps + targetVx;
+    const targetSystemLoad = currentE1RMSystem / (1 + effectiveReps / 30);
+    const rawExternal = targetSystemLoad * (1 + deltaPct) - bodyweightKg;
+    targetExternalLoad = roundToHalf(Math.max(0, rawExternal));
+  } else {
+    targetExternalLoad = null;
+  }
+
+  const rec = {
+    recId: uid(),
+    dateISO,
+    mesocycleId: mesocycle.mesocycleId,
+    mesocycleType: "peaking",
+    weekNum,
+    weekLabel: weekDef?.label || "?",
+    dayType,
+    targetExternalLoad,
+    targetReps,
+    targetVx,
+    setCount: dayPlan?.slots?.find(s => s.role === "primary")?.sets || 3,
+    deltaPct,
+    capLevel: 0, // No caps in peaking
+    readiness: options.readiness || { combined: "GREEN", capLevel: 0, channels: {} },
+    e1rmSystem: currentE1RMSystem,
+    e1rmExternal: currentE1RMExternal,
+    bodyweightKg,
+    varaFeedback: { suggestion: null, type: null },
+    breakInfo: null,
+    accessoryCapActive: false,
+    dayPlan,
+    attemptLoads,
+    peakingConfig: mesocycle.peakingConfig,
+    traces,
+  };
+
+  for (const t of traces) t.recId = rec.recId;
+
+  if (!options.dryRun) {
+    await saveRecommendation({
+      recId: rec.recId,
+      sessionId: null,
+      variantId: null,
+      targetSetRole: "top",
+      targetLoadKg: targetExternalLoad,
+      deltaPct,
+      capLevel: 0,
+      mesocycleWeek: weekNum,
+      dayType,
+      targetReps,
+      targetVx,
+      createdAtISO: new Date().toISOString(),
+    });
+    for (const t of traces) await saveDecisionTrace(t);
+  }
+
+  return rec;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // EXPORTS
 // ═══════════════════════════════════════════════════════════════
 
@@ -1291,6 +1557,14 @@ export {
   velocityLossPercent,
   // Recommend
   recommend,
+  recommendPeaking,
+  // Variant periodization
+  getDefaultVariantForDayType,
+  variantLoadModifier,
+  variantRepOverride,
+  assignVariantRotation,
+  // Peaking
+  computeAttemptLoads,
   // Weekly
   weeklyStimulus,
   // Stagnation
