@@ -693,7 +693,7 @@ function renderReadiness() {
     <div class="card">
       <label>Readiness-testi velocity (m/s)</label>
       <input type="number" inputmode="decimal" step="0.01" id="input-vel" value="${state.todayVelocity || ""}" placeholder="esim. 0.53">
-      <div class="muted mt">1. repin mean velocity readiness-testistä (+40 kg × 2, max intent)</div>
+      <div class="muted mt">1. repin mean velocity readiness-testistä (+${state.recommendation?.e1rmExternal ? roundToHalf(state.recommendation.e1rmExternal * 0.6) : 40} kg × 2, max intent, ~60% e1RM)</div>
     </div>
 
     <button class="btn btn-full mb" id="btn-save-readiness">Tallenna readiness</button>
@@ -854,13 +854,31 @@ function formatRestTime(seconds) {
 
 function startRestTimer() {
   stopRestTimer();
-  state.restTimerSeconds = 0;
+  // Get recommended rest time (countdown from min recommendation)
+  const dayType = state.workout?.dayType || "heavy";
+  const exercise = state.workout?.exercises[state.workout.currentExerciseIdx];
+  const restRec = (exercise?.role === "primary" || exercise?.role === "backoff")
+    ? REST_RECOMMENDATIONS[dayType] || REST_RECOMMENDATIONS.heavy
+    : REST_RECOMMENDATIONS.accessory;
+  const targetSec = restRec.minSec || 120;
+  state.restTimerSeconds = targetSec;
   state.restTimerInterval = setInterval(() => {
-    state.restTimerSeconds++;
+    state.restTimerSeconds--;
     const el = document.getElementById('rest-timer-display');
     if (el) {
-      el.textContent = formatRestTime(state.restTimerSeconds);
-      el.style.display = '';
+      if (state.restTimerSeconds >= 0) {
+        el.textContent = formatRestTime(state.restTimerSeconds);
+        el.style.display = '';
+        el.style.color = state.restTimerSeconds <= 10 ? 'var(--ok)' : 'var(--acc)';
+      } else {
+        // Overtime: count up past 0
+        el.textContent = `+${formatRestTime(Math.abs(state.restTimerSeconds))}`;
+        el.style.color = 'var(--warn)';
+      }
+    }
+    // Haptic/vibration alert at 0
+    if (state.restTimerSeconds === 0 && navigator.vibrate) {
+      navigator.vibrate([200, 100, 200]);
     }
   }, 1000);
 }
@@ -1629,6 +1647,34 @@ async function startWorkout() {
   const bw = state.settings?.bodyweightKg || 91;
   const exercises = [];
 
+  // Build warm-up for primary movement (non-peaking only)
+  const isPeakingMeso = state.mesocycle?.type === "peaking";
+  if (!isPeakingMeso && rec?.targetExternalLoad && rec.targetExternalLoad >= 20) {
+    const wuLoad = rec.targetExternalLoad;
+    const warmupPcts = wuLoad >= 60 ? [0, 0.30, 0.55, 0.75, 0.90] : wuLoad >= 30 ? [0, 0.50, 0.80] : [0, 0.60];
+    exercises.push({
+      movementId: state.movements.find(m => m.isPrimary)?.movementId || null,
+      name: "Lämmittely — Lisäpainoleuanveto",
+      category: "vertikaaliveto",
+      originalCategory: "vertikaaliveto",
+      role: "warmup",
+      variantName: null,
+      tempoNote: "Kontrolloidusti, nouseva kuorma",
+      loadKg: 0,
+      progressSuggestion: "hold",
+      sets: warmupPcts.map((pct, i) => ({
+        idx: i,
+        targetReps: pct === 0 ? 5 : pct < 0.7 ? 3 : 2,
+        targetVx: null,
+        loadKg: roundToHalf(wuLoad * pct),
+        reps: null,
+        actualVx: null,
+        velocity: null,
+        completed: false,
+      })),
+    });
+  }
+
   // Build exercises from day plan
   if (rec?.dayPlan?.slots) {
     for (const slot of rec.dayPlan.slots) {
@@ -1912,7 +1958,7 @@ function bindWorkoutEvents() {
   if (swapVarBtn) swapVarBtn.addEventListener("click", () => {
     const exercise = w.exercises[w.currentExerciseIdx];
     if (!exercise) return;
-    const allVariantNames = ["Kilpaveto (leveä myötäote)", "Korokeveto", "Nopeusveto kuminauhalla", "Myötäoteveto", "Neutraaliote", "2s ylipito", "1.5-toisto hiissaus"];
+    const allVariantNames = ["Kilpaveto (leveä vastaote)", "Korokeveto", "Nopeusveto kuminauhalla", "Myötäoteveto", "Neutraaliote", "2s ylipito", "1.5-toisto hiissaus"];
     const choice = prompt(
       `Vaihda variaatio:\n${allVariantNames.map((v, i) => `${i + 1}. ${v}${v === exercise.variantName ? " ✓" : ""}`).join("\n")}\n\nSyötä numero:`,
       "1"

@@ -764,9 +764,14 @@ async function recommend(options = {}) {
     trace("CAP_YELLOW", { deltaPct: oldDelta }, { deltaPct }, "YELLOW readiness → deltaPct puolitettu");
   }
 
-  // 11. Compute target load
+  // 11. Compute target load — use actual slot reps/Vx when available
   let targetReps, targetVx;
-  if (weekDef) {
+  const primarySlotForLoad = dayPlan?.slots?.find(s => s.role === "primary");
+  if (primarySlotForLoad) {
+    // Use actual dayPlan slot values (from weekPlan)
+    targetReps = primarySlotForLoad.reps;
+    targetVx = primarySlotForLoad.targetVx ?? (dayType === "heavy" ? 2 : dayType === "volume" ? 3 : 4);
+  } else if (weekDef) {
     targetReps = dayType === "heavy" ? weekDef.heavyReps : (dayType === "volume" ? 5 : 2);
     targetVx = dayType === "heavy" ? weekDef.heavyTargetVx : (dayType === "volume" ? 3 : 4);
   } else {
@@ -835,6 +840,22 @@ async function recommend(options = {}) {
       }
       return s;
     })};
+  }
+
+  // 16. Enrich dayPlan with variant names (if not already assigned from mesocycle)
+  if (dayPlan && dayPlan.slots) {
+    const variantMap = VARIANT_DAY_TYPE_MAP[dayType] || VARIANT_DAY_TYPE_MAP.heavy;
+    for (const slot of dayPlan.slots) {
+      if ((slot.role === "primary" || slot.role === "backoff") && slot.category === "vertikaaliveto" && !slot.variantName) {
+        slot.variantName = variantMap[0]; // Default variant for this day type
+      }
+    }
+    // Trace if variant assigned
+    const primarySlot = dayPlan.slots.find(s => s.role === "primary" && s.variantName);
+    if (primarySlot?.variantName) {
+      trace("VARIANT_ASSIGNED", {}, { variant: primarySlot.variantName, dayType },
+        `Variaatio: ${primarySlot.variantName}`);
+    }
   }
 
   // Build recommendation
