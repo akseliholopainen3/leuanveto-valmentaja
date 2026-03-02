@@ -1285,17 +1285,30 @@ function getDefaultVariantForDayType(dayType) {
  * Returns a multiplier to apply to target load.
  * e.g., koroke = +5% (supramaximal eccentric), kuminauha = -40% (speed work)
  */
-function variantLoadModifier(variantName) {
+// Default load modifiers (used when no custom overrides exist)
+const DEFAULT_VARIANT_MODIFIERS = {
+  "Kilpaveto (leveä vastaote)": 0,
+  "Korokeveto":                 0.05,    // +5% supramaximal
+  "Nopeusveto kuminauhalla":   -0.40,   // -40% speed
+  "Myötäoteveto":              -0.05,   // -5% grip weakness
+  "Neutraaliote":              -0.03,   // -3% grip neutral
+  "2s ylipito":                -0.05,   // -5% isometric hold
+  "1.5-toisto hiissaus":       -0.10,   // -10% tempo reps
+};
+
+/**
+ * Variant load modifier. Uses customModifiers (from settings) when available,
+ * falls back to defaults.
+ * @param {string} variantName
+ * @param {Object|null} customModifiers — { variantName: number } from settings
+ * @returns {number} modifier as a fraction (e.g. -0.05 = -5%)
+ */
+function variantLoadModifier(variantName, customModifiers = null) {
   if (!variantName) return 0;
-  switch (variantName) {
-    case "Korokeveto":              return 0.05;    // +5% supramaximal
-    case "Nopeusveto kuminauhalla": return -0.40;   // -40% speed
-    case "Myötäoteveto":            return -0.05;   // -5% grip weakness
-    case "Neutraaliote":            return -0.03;   // -3% grip neutral
-    case "2s ylipito":              return -0.05;   // -5% isometric hold
-    case "1.5-toisto hiissaus":     return -0.10;   // -10% tempo reps
-    default:                        return 0;       // Kilpaveto = baseline
+  if (customModifiers && variantName in customModifiers) {
+    return customModifiers[variantName];
   }
+  return DEFAULT_VARIANT_MODIFIERS[variantName] ?? 0;
 }
 
 /**
@@ -1580,6 +1593,7 @@ export {
   recommend,
   recommendPeaking,
   // Variant periodization
+  DEFAULT_VARIANT_MODIFIERS,
   getDefaultVariantForDayType,
   variantLoadModifier,
   variantRepOverride,

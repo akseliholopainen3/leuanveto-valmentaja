@@ -211,6 +211,39 @@
     @media (max-width: 360px) {
       .set-btns-row { grid-template-columns: repeat(4, 1fr); }
     }
+    /* ── Bottom Sheet Modal ── */
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 300;
+      background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+      display: flex; align-items: flex-end; justify-content: center;
+      animation: fadeIn 0.15s ease-out;
+    }
+    .modal-sheet {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 16px 16px 0 0; width: 100%; max-width: 600px;
+      max-height: 80dvh; overflow-y: auto; padding: 16px 16px 24px;
+      padding-bottom: max(24px, env(safe-area-inset-bottom));
+      animation: slideUp 0.2s ease-out;
+    }
+    @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+    .modal-handle { width: 36px; height: 4px; background: var(--dim); border-radius: 2px; margin: 0 auto 12px; }
+    .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
+    .modal-option {
+      display: flex; align-items: center; gap: 10px; padding: 12px;
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      margin-bottom: 6px; cursor: pointer; min-height: 48px;
+      transition: background 0.1s;
+    }
+    .modal-option:active { background: var(--card2); }
+    .modal-option.selected { border-color: var(--acc); background: rgba(79,140,255,0.1); }
+    .modal-option-icon { font-size: 18px; width: 28px; text-align: center; }
+    .modal-option-text { flex: 1; }
+    .modal-option-label { font-weight: 600; font-size: 14px; }
+    .modal-option-desc { font-size: 12px; color: var(--muted); }
+    .modal-input-row { display: flex; gap: 8px; margin-top: 8px; }
+    .modal-input-row input { flex: 1; }
+    .modal-input-row .btn { min-width: 80px; }
+    .modal-category { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.5px; margin: 12px 0 6px; }
   </style>
 </head>
 <body>
@@ -257,6 +290,7 @@ import {
   eliteVolumeCheck,
   computeMovementE1RM, computeMovementE1RMHistory,
   REST_RECOMMENDATIONS,
+  DEFAULT_VARIANT_MODIFIERS,
   variantLoadModifier, variantRepOverride, assignVariantRotation,
   computeAttemptLoads,
 } from "./engine.js";
@@ -385,6 +419,131 @@ function showToast(message, type = "", duration = 3000) {
   toast.textContent = message;
   container.appendChild(toast);
   setTimeout(() => toast.remove(), duration);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODAL SYSTEM (replaces all prompt() calls)
+// ═══════════════════════════════════════════════════════════════
+
+/** Close any open modal */
+function closeModal() {
+  const existing = document.querySelector(".modal-overlay");
+  if (existing) existing.remove();
+}
+
+/**
+ * Show a list of options as a bottom sheet.
+ * Returns a Promise that resolves to the selected index (0-based) or null if cancelled.
+ * @param {string} title — modal title
+ * @param {Array<{label:string, desc?:string, icon?:string}>} options
+ * @param {number|null} selectedIdx — currently selected index (highlight)
+ */
+function showListModal(title, options, selectedIdx = null) {
+  return new Promise(resolve => {
+    closeModal();
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `
+      <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">${title}</div>
+        <div class="modal-options-list"></div>
+        <button class="btn btn-outline btn-full" style="margin-top:8px" data-modal-cancel>Peruuta</button>
+      </div>`;
+    const list = overlay.querySelector(".modal-options-list");
+    options.forEach((opt, i) => {
+      const el = document.createElement("div");
+      el.className = `modal-option${i === selectedIdx ? " selected" : ""}`;
+      el.innerHTML = `${opt.icon ? `<span class="modal-option-icon">${opt.icon}</span>` : ""}
+        <div class="modal-option-text">
+          <div class="modal-option-label">${opt.label}</div>
+          ${opt.desc ? `<div class="modal-option-desc">${opt.desc}</div>` : ""}
+        </div>`;
+      el.addEventListener("click", () => { closeModal(); resolve(i); });
+      list.appendChild(el);
+    });
+    overlay.querySelector("[data-modal-cancel]").addEventListener("click", () => { closeModal(); resolve(null); });
+    overlay.addEventListener("click", e => { if (e.target === overlay) { closeModal(); resolve(null); } });
+    document.body.appendChild(overlay);
+  });
+}
+
+/**
+ * Show an input modal (replaces prompt() for numeric/text input).
+ * Returns a Promise that resolves to the entered string or null if cancelled.
+ * @param {string} title — modal title
+ * @param {string} placeholder — placeholder / label
+ * @param {string} defaultValue — pre-filled value
+ * @param {string} inputType — "number"|"text"
+ */
+function showInputModal(title, placeholder, defaultValue = "", inputType = "number") {
+  return new Promise(resolve => {
+    closeModal();
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `
+      <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">${title}</div>
+        <label style="margin-top:0">${placeholder}</label>
+        <div class="modal-input-row">
+          <input type="${inputType}" inputmode="${inputType === "number" ? "decimal" : "text"}" value="${defaultValue}" autofocus />
+          <button class="btn btn-ok" data-modal-ok>OK</button>
+        </div>
+        <button class="btn btn-outline btn-full" style="margin-top:8px" data-modal-cancel>Peruuta</button>
+      </div>`;
+    const inp = overlay.querySelector("input");
+    const submit = () => { const v = inp.value.trim(); closeModal(); resolve(v || null); };
+    overlay.querySelector("[data-modal-ok]").addEventListener("click", submit);
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") submit(); });
+    overlay.querySelector("[data-modal-cancel]").addEventListener("click", () => { closeModal(); resolve(null); });
+    overlay.addEventListener("click", e => { if (e.target === overlay) { closeModal(); resolve(null); } });
+    document.body.appendChild(overlay);
+    setTimeout(() => inp.focus(), 50);
+  });
+}
+
+/**
+ * Show a two-field input modal (sets + reps).
+ * Returns {sets, reps} or null.
+ */
+function showSetsRepsModal(title, defaultSets = 3, defaultReps = 10) {
+  return new Promise(resolve => {
+    closeModal();
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `
+      <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">${title}</div>
+        <div class="row" style="margin-top:8px">
+          <div>
+            <label style="margin-top:0">Sarjat</label>
+            <input type="number" inputmode="numeric" value="${defaultSets}" data-field="sets" min="1" max="20" />
+          </div>
+          <div>
+            <label style="margin-top:0">Toistot</label>
+            <input type="number" inputmode="numeric" value="${defaultReps}" data-field="reps" min="1" max="30" />
+          </div>
+        </div>
+        <div class="btn-group" style="margin-top:12px">
+          <button class="btn btn-ok" style="flex:1" data-modal-ok>OK</button>
+          <button class="btn btn-outline" style="flex:1" data-modal-cancel>Peruuta</button>
+        </div>
+      </div>`;
+    const submit = () => {
+      const sets = parseInt(overlay.querySelector("[data-field='sets']").value) || defaultSets;
+      const reps = parseInt(overlay.querySelector("[data-field='reps']").value) || defaultReps;
+      closeModal();
+      resolve({ sets, reps });
+    };
+    overlay.querySelector("[data-modal-ok]").addEventListener("click", submit);
+    overlay.querySelectorAll("input").forEach(inp => inp.addEventListener("keydown", e => { if (e.key === "Enter") submit(); }));
+    overlay.querySelector("[data-modal-cancel]").addEventListener("click", () => { closeModal(); resolve(null); });
+    overlay.addEventListener("click", e => { if (e.target === overlay) { closeModal(); resolve(null); } });
+    document.body.appendChild(overlay);
+    setTimeout(() => overlay.querySelector("[data-field='sets']").focus(), 50);
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1275,6 +1434,22 @@ function renderSettingsView() {
       </div>
     </div>
 
+    <div class="card">
+      <div class="card-title">Varianttien kuormakorjaukset (%)</div>
+      <div class="muted" style="font-size:12px;margin-bottom:8px">Säädä kuinka paljon kuorma muuttuu kullakin variaatiolla. 0% = kilpavedon kuorma. Negatiivinen = kevyempi.</div>
+      ${Object.entries(DEFAULT_VARIANT_MODIFIERS).map(([name, defaultVal]) => {
+        const custom = s.variantModifiers?.[name];
+        const val = custom !== undefined ? custom : defaultVal;
+        const pct = Math.round(val * 100);
+        const isModified = custom !== undefined && custom !== defaultVal;
+        return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span style="flex:1;font-size:13px;${isModified ? "color:var(--acc);font-weight:600" : ""}">${name}</span>
+          <input type="number" inputmode="numeric" data-variant-mod="${name}" value="${pct}" style="width:70px;text-align:center;min-height:38px;font-size:14px" min="-50" max="20" step="1">
+          <span style="font-size:12px;color:var(--muted)">%</span>
+        </div>`;
+      }).join("")}
+    </div>
+
     <button class="btn btn-full mb" id="btn-save-settings">Tallenna asetukset</button>
 
     <div class="card">
@@ -1293,7 +1468,7 @@ function renderSettingsView() {
     <div class="card">
       <div class="card-title">Diagnostiikka</div>
       <div class="muted">
-        Versio: 2.2.0 | Schema: 3<br>
+        Versio: 2.3.0 | Schema: 3<br>
         Sessioita: ${state.sessions.length} | Sarjoja: ${state.allSets.length}<br>
         Liikkeitä: ${state.movements.length}
       </div>
@@ -1421,50 +1596,59 @@ function bind() {
       if (!day) return;
 
       const dayNames = { 1: "Ma", 2: "Ti", 3: "Ke", 4: "To", 5: "Pe", 6: "La", 7: "Su" };
-      const currentSlots = day.slots.map((s, i) => `${i + 1}. ${s.defaultMovementName} ${s.sets}×${s.reps}`).join("\n");
 
-      const action = prompt(
-        `${dayNames[dayOfWeek]} — ${day.dayType}\n\nNykyiset liikkeet:\n${currentSlots}\n\nValitse:\n1. Vaihda liike\n2. Lisää liike\n3. Poista liike\n4. Muuta sarjoja/toistoja`,
-        "1"
+      // Step 1: Choose action
+      const action = await showListModal(
+        `${dayNames[dayOfWeek]} — ${day.dayType}`,
+        [
+          { icon: "🔄", label: "Vaihda liike", desc: "Korvaa olemassa oleva liike toisella" },
+          { icon: "➕", label: "Lisää liike", desc: "Lisää uusi liike päivään" },
+          { icon: "🗑️", label: "Poista liike", desc: "Poista liike päivästä" },
+          { icon: "✏️", label: "Muuta sarjoja/toistoja", desc: "Muokkaa sarjojen tai toistojen määrää" },
+        ]
       );
+      if (action === null) return;
 
-      if (action === "1") {
-        const slotIdx = parseInt(prompt("Minkä liikkeen vaihdat? (numero):", "2")) - 1;
-        if (slotIdx < 0 || slotIdx >= day.slots.length) return;
+      if (action === 0) {
+        // Swap movement: choose which slot
+        const slotIdx = await showListModal(
+          "Minkä liikkeen vaihdat?",
+          day.slots.map((s, i) => ({ icon: s.role === "primary" ? "🎯" : "🔸", label: s.defaultMovementName, desc: `${s.sets}×${s.reps} — ${s.category}` }))
+        );
+        if (slotIdx === null || slotIdx < 0 || slotIdx >= day.slots.length) return;
         const slot = day.slots[slotIdx];
         const sameCat = state.movements.filter(m => m.category === slot.category);
         const others = state.movements.filter(m => m.category !== slot.category);
         const options = [...sameCat, ...others];
-        const choice = prompt(
-          `Vaihda ${slot.defaultMovementName}:\n${options.map((m, i) => `${i + 1}. ${m.name} (${m.category})`).join("\n")}\n\nNumero:`,
-          "1"
+        const movIdx = await showListModal(
+          `Vaihda ${slot.defaultMovementName}`,
+          options.map(m => ({ icon: sameCat.includes(m) ? "✅" : "🔹", label: m.name, desc: m.category }))
         );
-        const idx = parseInt(choice) - 1;
-        if (idx >= 0 && idx < options.length) {
-          slot.defaultMovementName = options[idx].name;
-          slot.category = options[idx].category;
+        if (movIdx !== null && movIdx >= 0 && movIdx < options.length) {
+          slot.defaultMovementName = options[movIdx].name;
+          slot.category = options[movIdx].category;
           await saveMesocycle(state.mesocycle);
           await computeRecommendation();
-          showToast(`Vaihdettu: ${options[idx].name}`, "ok");
+          showToast(`Vaihdettu: ${options[movIdx].name}`, "ok");
           render();
         }
-      } else if (action === "2") {
+      } else if (action === 1) {
+        // Add movement
         const options = state.movements;
-        const choice = prompt(
-          `Lisää liike:\n${options.map((m, i) => `${i + 1}. ${m.name} (${m.category})`).join("\n")}\n\nNumero:`,
-          "1"
+        const movIdx = await showListModal(
+          "Lisää liike",
+          options.map(m => ({ icon: "🔹", label: m.name, desc: m.category }))
         );
-        const idx = parseInt(choice) - 1;
-        if (idx >= 0 && idx < options.length) {
-          const m = options[idx];
-          const sets = parseInt(prompt("Sarjat:", "3")) || 3;
-          const reps = parseInt(prompt("Toistot:", "10")) || 10;
+        if (movIdx !== null && movIdx >= 0 && movIdx < options.length) {
+          const m = options[movIdx];
+          const sr = await showSetsRepsModal(`${m.name} — Sarjat & toistot`);
+          if (!sr) return;
           day.slots.push({
             role: "accessory",
             category: m.category,
             defaultMovementName: m.name,
-            sets,
-            reps,
+            sets: sr.sets,
+            reps: sr.reps,
             targetVx: null,
           });
           await saveMesocycle(state.mesocycle);
@@ -1472,25 +1656,33 @@ function bind() {
           showToast(`${m.name} lisätty`, "ok");
           render();
         }
-      } else if (action === "3") {
-        const slotIdx = parseInt(prompt("Poista liike (numero):", "2")) - 1;
-        if (slotIdx >= 0 && slotIdx < day.slots.length && day.slots[slotIdx].role !== "primary") {
-          const removed = day.slots.splice(slotIdx, 1);
+      } else if (action === 2) {
+        // Remove movement
+        const removable = day.slots.map((s, i) => ({ s, i })).filter(x => x.s.role !== "primary");
+        if (removable.length === 0) { showToast("Pääliikettä ei voi poistaa", "warn"); return; }
+        const rIdx = await showListModal(
+          "Poista liike",
+          removable.map(x => ({ icon: "🗑️", label: x.s.defaultMovementName, desc: `${x.s.sets}×${x.s.reps}` }))
+        );
+        if (rIdx !== null && rIdx >= 0 && rIdx < removable.length) {
+          const removed = day.slots.splice(removable[rIdx].i, 1);
           await saveMesocycle(state.mesocycle);
           await computeRecommendation();
           showToast(`${removed[0].defaultMovementName} poistettu`, "ok");
           render();
-        } else {
-          showToast("Pääliikettä ei voi poistaa", "warn");
         }
-      } else if (action === "4") {
-        const slotIdx = parseInt(prompt("Muokkaa liike (numero):", "2")) - 1;
-        if (slotIdx >= 0 && slotIdx < day.slots.length) {
+      } else if (action === 3) {
+        // Edit sets/reps
+        const slotIdx = await showListModal(
+          "Muokkaa liikettä",
+          day.slots.map(s => ({ icon: "✏️", label: s.defaultMovementName, desc: `${s.sets}×${s.reps}` }))
+        );
+        if (slotIdx !== null && slotIdx >= 0 && slotIdx < day.slots.length) {
           const slot = day.slots[slotIdx];
-          const newSets = parseInt(prompt(`${slot.defaultMovementName} sarjat:`, slot.sets)) || slot.sets;
-          const newReps = parseInt(prompt(`${slot.defaultMovementName} toistot:`, slot.reps)) || slot.reps;
-          slot.sets = newSets;
-          slot.reps = newReps;
+          const sr = await showSetsRepsModal(`${slot.defaultMovementName}`, slot.sets, slot.reps);
+          if (!sr) return;
+          slot.sets = sr.sets;
+          slot.reps = sr.reps;
           await saveMesocycle(state.mesocycle);
           await computeRecommendation();
           showToast("Päivitetty", "ok");
@@ -1559,6 +1751,14 @@ function bind() {
     state.settings.vlStopPercent = parseNumericInput($("#set-vlstop")?.value) || 20;
     state.settings.readinessVelocityWindowN = parseNumericInput($("#set-velwindow")?.value) || 10;
     state.settings.readinessHrvWindowN = parseNumericInput($("#set-hrvwindow")?.value) || 14;
+    // Read variant load modifiers
+    const variantModifiers = {};
+    $$("[data-variant-mod]").forEach(inp => {
+      const name = inp.dataset.variantMod;
+      const val = parseInt(inp.value);
+      if (!isNaN(val)) variantModifiers[name] = val / 100;
+    });
+    state.settings.variantModifiers = variantModifiers;
     await saveSettings(state.settings);
     await computeRecommendation();
     showToast("Asetukset tallennettu", "ok");
@@ -1699,11 +1899,11 @@ async function startWorkout() {
           loadKg = rec.attemptLoads.third;
         }
       } else if (isPrimary && rec.targetExternalLoad !== null) {
-        // Apply variant load modifier
-        const vMod = variantLoadModifier(slot.variantName);
+        // Apply variant load modifier (with athlete overrides)
+        const vMod = variantLoadModifier(slot.variantName, state.settings?.variantModifiers);
         loadKg = roundToHalf(rec.targetExternalLoad * (1 + vMod));
       } else if (isBackoff && rec.targetExternalLoad !== null) {
-        const vMod = variantLoadModifier(slot.variantName);
+        const vMod = variantLoadModifier(slot.variantName, state.settings?.variantModifiers);
         loadKg = roundToHalf(rec.targetExternalLoad * 0.85 * (1 + vMod));
       } else if (mov) {
         // Get movement progress for accessory
@@ -1827,11 +2027,11 @@ function bindWorkoutEvents() {
 
   // Edit load
   const loadBtn = $("#btn-edit-load");
-  if (loadBtn) loadBtn.addEventListener("click", () => {
+  if (loadBtn) loadBtn.addEventListener("click", async () => {
     const exercise = w.exercises[w.currentExerciseIdx];
     const currentSet = exercise?.sets[w.currentSetIdx];
     if (!currentSet) return;
-    const input = prompt("Syötä paino (kg):", currentSet.loadKg || "");
+    const input = await showInputModal("Muokkaa painoa", "Paino (kg)", String(currentSet.loadKg || ""), "number");
     if (input !== null) {
       const v = parseNumericInput(input);
       if (v !== null) {
@@ -1917,18 +2117,17 @@ function bindWorkoutEvents() {
 
   // Add extra exercise
   const addExBtn = $("#btn-add-exercise");
-  if (addExBtn) addExBtn.addEventListener("click", () => {
+  if (addExBtn) addExBtn.addEventListener("click", async () => {
     const options = state.movements.filter(m => !w.exercises.some(ex => ex.movementId === m.movementId));
     if (options.length === 0) { showToast("Kaikki liikkeet jo mukana", "warn"); return; }
-    const choice = prompt(
-      `Lisää liike:\n${options.map((m, i) => `${i + 1}. ${m.name} (${m.category})`).join("\n")}\n\nSyötä numero:`,
-      "1"
+    const movIdx = await showListModal(
+      "Lisää liike",
+      options.map(m => ({ icon: "🔹", label: m.name, desc: m.category }))
     );
-    const idx = parseInt(choice) - 1;
-    if (idx >= 0 && idx < options.length) {
-      const m = options[idx];
-      const setsCount = parseInt(prompt("Sarjojen määrä:", "3")) || 3;
-      const repsTarget = parseInt(prompt("Tavoitetoistot:", "10")) || 10;
+    if (movIdx !== null && movIdx >= 0 && movIdx < options.length) {
+      const m = options[movIdx];
+      const sr = await showSetsRepsModal(`${m.name} — Sarjat & toistot`);
+      if (!sr) return;
       w.exercises.push({
         movementId: m.movementId,
         name: m.name,
@@ -1937,9 +2136,9 @@ function bindWorkoutEvents() {
         role: "accessory",
         loadKg: null,
         progressSuggestion: "hold",
-        sets: Array.from({ length: setsCount }, (_, i) => ({
+        sets: Array.from({ length: sr.sets }, (_, i) => ({
           idx: i,
-          targetReps: repsTarget,
+          targetReps: sr.reps,
           targetVx: null,
           loadKg: null,
           reps: null,
@@ -1955,22 +2154,36 @@ function bindWorkoutEvents() {
 
   // Swap variant
   const swapVarBtn = $("#btn-swap-variant");
-  if (swapVarBtn) swapVarBtn.addEventListener("click", () => {
+  if (swapVarBtn) swapVarBtn.addEventListener("click", async () => {
     const exercise = w.exercises[w.currentExerciseIdx];
     if (!exercise) return;
     const allVariantNames = ["Kilpaveto (leveä vastaote)", "Korokeveto", "Nopeusveto kuminauhalla", "Myötäoteveto", "Neutraaliote", "2s ylipito", "1.5-toisto hiissaus"];
-    const choice = prompt(
-      `Vaihda variaatio:\n${allVariantNames.map((v, i) => `${i + 1}. ${v}${v === exercise.variantName ? " ✓" : ""}`).join("\n")}\n\nSyötä numero:`,
-      "1"
+    const variantDescs = {
+      "Kilpaveto (leveä vastaote)": "Kilpailuote, perusveto",
+      "Korokeveto": "Supramaksimaalinen, peaking",
+      "Nopeusveto kuminauhalla": "Nopeusvoima, räjähtävä",
+      "Myötäoteveto": "Otevariaatio, volyymi/raskas",
+      "Neutraaliote": "Otevariaatio, volyymi",
+      "2s ylipito": "Isometrinen, yläasento 2s",
+      "1.5-toisto hiissaus": "Tempo, eksentrisesti kontrolloitu",
+    };
+    const currentIdx = allVariantNames.indexOf(exercise.variantName);
+    const idx = await showListModal(
+      "Vaihda variaatio",
+      allVariantNames.map(v => ({
+        icon: v === exercise.variantName ? "✅" : "🔸",
+        label: v,
+        desc: `${variantDescs[v] || ""} — kuorma ${(variantLoadModifier(v, state.settings?.variantModifiers) * 100) > 0 ? "+" : ""}${Math.round(variantLoadModifier(v, state.settings?.variantModifiers) * 100)}%`,
+      })),
+      currentIdx >= 0 ? currentIdx : null
     );
-    const idx = parseInt(choice) - 1;
-    if (idx >= 0 && idx < allVariantNames.length) {
+    if (idx !== null && idx >= 0 && idx < allVariantNames.length) {
       const newVariant = allVariantNames[idx];
       exercise.variantName = newVariant;
       const vOverride = variantRepOverride(newVariant);
       exercise.tempoNote = vOverride?.tempoNote || null;
       // Recalculate remaining set loads with new variant modifier
-      const vMod = variantLoadModifier(newVariant);
+      const vMod = variantLoadModifier(newVariant, state.settings?.variantModifiers);
       const rec = state.recommendation;
       if (rec?.targetExternalLoad !== null && (exercise.role === "primary" || exercise.role === "backoff")) {
         const basePct = exercise.role === "backoff" ? 0.85 : 1.0;
@@ -2031,19 +2244,22 @@ function bindWorkoutEvents() {
 
   // Swap exercise
   const swapBtn = $("#btn-swap-exercise");
-  if (swapBtn) swapBtn.addEventListener("click", () => {
+  if (swapBtn) swapBtn.addEventListener("click", async () => {
     const exercise = w.exercises[w.currentExerciseIdx];
     if (!exercise) return;
     // Show same category movements first
     const sameCategory = state.movements.filter(m => m.category === exercise.category && m.name !== exercise.name);
     const others = state.movements.filter(m => m.category !== exercise.category && m.name !== exercise.name);
     const options = [...sameCategory, ...others];
-    const choice = prompt(
-      `Vaihda liike:\n${options.map((m, i) => `${i + 1}. ${m.name} (${m.category})`).join("\n")}\n\nSyötä numero:`,
-      "1"
+    const idx = await showListModal(
+      "Vaihda liike",
+      options.map(m => ({
+        icon: sameCategory.includes(m) ? "✅" : "🔹",
+        label: m.name,
+        desc: m.category,
+      }))
     );
-    const idx = parseInt(choice) - 1;
-    if (idx >= 0 && idx < options.length) {
+    if (idx !== null && idx >= 0 && idx < options.length) {
       exercise.name = options[idx].name;
       exercise.movementId = options[idx].movementId;
       exercise.category = options[idx].category;

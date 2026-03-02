@@ -41,38 +41,75 @@ const PULL_VOLUME_CATEGORIES = new Set([
   "hauisfleksio",
 ]);
 
-// ── Preset movements ──
+// ── Preset movements (40+ across all categories) ──
 const PRESET_MOVEMENTS = [
-  // Primary
+  // ─── Primary ───
   { name: "Lisäpainoleuanveto", category: "vertikaaliveto", isPrimary: true, isPreset: true },
-  // Vertical pull
+  // ─── Vertical pull ───
   { name: "Ylätalja", category: "vertikaaliveto", isPrimary: false, isPreset: true },
   { name: "Lat pulldown", category: "vertikaaliveto", isPrimary: false, isPreset: true },
   { name: "Pullover kone", category: "vertikaaliveto", isPrimary: false, isPreset: true },
-  // Horizontal pull
+  { name: "Leuanveto (kehonpaino)", category: "vertikaaliveto", isPrimary: false, isPreset: true },
+  { name: "Ylätalja neutraaliote", category: "vertikaaliveto", isPrimary: false, isPreset: true },
+  { name: "Single-arm lat pulldown", category: "vertikaaliveto", isPrimary: false, isPreset: true },
+  // ─── Horizontal pull ───
   { name: "Penkkiveto", category: "horisontaaliveto", isPrimary: false, isPreset: true },
   { name: "Alatalja", category: "horisontaaliveto", isPrimary: false, isPreset: true },
   { name: "Seated row", category: "horisontaaliveto", isPrimary: false, isPreset: true },
   { name: "Cable row", category: "horisontaaliveto", isPrimary: false, isPreset: true },
   { name: "T-bar row", category: "horisontaaliveto", isPrimary: false, isPreset: true },
-  // Bicep flexion
+  { name: "Chest-supported row", category: "horisontaaliveto", isPrimary: false, isPreset: true },
+  { name: "Kulmasoutu käsipainot", category: "horisontaaliveto", isPrimary: false, isPreset: true },
+  { name: "Seal row", category: "horisontaaliveto", isPrimary: false, isPreset: true },
+  { name: "Face pull", category: "horisontaaliveto", isPrimary: false, isPreset: true },
+  // ─── Bicep flexion ───
   { name: "Hauiskääntö tanko", category: "hauisfleksio", isPrimary: false, isPreset: true },
   { name: "Hauiskääntö käsipainot", category: "hauisfleksio", isPrimary: false, isPreset: true },
   { name: "Hammer curl", category: "hauisfleksio", isPrimary: false, isPreset: true },
   { name: "Preacher curl", category: "hauisfleksio", isPrimary: false, isPreset: true },
-  // Vertical push
+  { name: "Incline curl", category: "hauisfleksio", isPrimary: false, isPreset: true },
+  { name: "Spider curl", category: "hauisfleksio", isPrimary: false, isPreset: true },
+  { name: "Cable curl", category: "hauisfleksio", isPrimary: false, isPreset: true },
+  { name: "Bayesian curl", category: "hauisfleksio", isPrimary: false, isPreset: true },
+  // ─── Vertical push ───
   { name: "Pystypunnerrus", category: "vertikaalityöntö", isPrimary: false, isPreset: true },
   { name: "Shoulder press laite", category: "vertikaalityöntö", isPrimary: false, isPreset: true },
-  // Horizontal push
+  { name: "Pystypunnerrus käsipainot", category: "vertikaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Sivunosto", category: "vertikaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Lateral raise kone", category: "vertikaalityöntö", isPrimary: false, isPreset: true },
+  // ─── Horizontal push ───
   { name: "Penkkipunnerrus", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
   { name: "Chest press", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
   { name: "Pec deck", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
-  // Tricep extension
+  { name: "Vinopenkkipunnerrus", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Cable fly", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  { name: "Dippi", category: "horisontaalityöntö", isPrimary: false, isPreset: true },
+  // ─── Tricep extension ───
   { name: "Tricep pushdown", category: "ojentajaekstensio", isPrimary: false, isPreset: true },
   { name: "French press", category: "ojentajaekstensio", isPrimary: false, isPreset: true },
-  // Core
+  { name: "Overhead tricep ext", category: "ojentajaekstensio", isPrimary: false, isPreset: true },
+  { name: "Skull crusher", category: "ojentajaekstensio", isPrimary: false, isPreset: true },
+  { name: "Kickback", category: "ojentajaekstensio", isPrimary: false, isPreset: true },
+  // ─── Core ───
   { name: "Ab crunch", category: "core", isPrimary: false, isPreset: true },
   { name: "Cable crunch", category: "core", isPrimary: false, isPreset: true },
+  { name: "Hanging leg raise", category: "core", isPrimary: false, isPreset: true },
+  { name: "Ab wheel rollout", category: "core", isPrimary: false, isPreset: true },
+  { name: "Pallof press", category: "core", isPrimary: false, isPreset: true },
+  // ─── Lower body ───
+  { name: "Jalkaprässi", category: "alaraaja", isPrimary: false, isPreset: true },
+  { name: "Kyykky", category: "alaraaja", isPrimary: false, isPreset: true },
+  { name: "Maastaveto", category: "alaraaja", isPrimary: false, isPreset: true },
+  { name: "Leg curl", category: "alaraaja", isPrimary: false, isPreset: true },
+  { name: "Leg extension", category: "alaraaja", isPrimary: false, isPreset: true },
+  { name: "Bulgarian split squat", category: "alaraaja", isPrimary: false, isPreset: true },
+  { name: "Hip thrust", category: "alaraaja", isPrimary: false, isPreset: true },
+  { name: "Pohjenosto", category: "alaraaja", isPrimary: false, isPreset: true },
+  // ─── Other / grip ───
+  { name: "Rannekoukistus", category: "muu", isPrimary: false, isPreset: true },
+  { name: "Wrist roller", category: "muu", isPrimary: false, isPreset: true },
+  { name: "Dead hang", category: "muu", isPrimary: false, isPreset: true },
+  { name: "Shrug", category: "muu", isPrimary: false, isPreset: true },
 ];
 
 // ── Primary variants ──
