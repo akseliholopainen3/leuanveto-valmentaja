@@ -262,7 +262,10 @@ import {
   getAllSessions, getSession, saveSession, deleteSession,
   getSetsForSession, getAllSets, saveSet, saveSets, deleteSet,
   saveMeasurement, getMeasurementsByType,
+  MESOCYCLE_TEMPLATES,
   getActiveMesocycle, saveMesocycle, createDefaultMesocycle, createPeakingMesocycle, getAllMesocycles,
+  createHypertrofiaMesocycle, createMaksimivoimaMesocycle, createEksenterinenMesocycle,
+  createDUPMesocycle, createSiirtymaMesocycle, createPalautuminenMesocycle,
   getSettings, saveSettings,
   exportFullBackup, importFullBackup,
   parseCSV, importHistoricalCSV,
@@ -291,6 +294,7 @@ import {
   computeMovementE1RM, computeMovementE1RMHistory,
   REST_RECOMMENDATIONS,
   DEFAULT_VARIANT_MODIFIERS,
+  SUGGESTED_NEXT_TEMPLATE,
   variantLoadModifier, variantRepOverride, assignVariantRotation,
   computeAttemptLoads,
 } from "./engine.js";
@@ -335,7 +339,7 @@ async function init() {
     state.mesocycle = createDefaultMesocycle(todayISO());
     assignVariantRotation(state.mesocycle.weekPlans);
     await saveMesocycle(state.mesocycle);
-  } else if (state.mesocycle.type !== "peaking") {
+  } else if (!["peaking", "eksentrinen", "siirtyma"].includes(state.mesocycle.type)) {
     // Migrate existing mesocycle: add variants if missing
     const hasVariants = state.mesocycle.weekPlans?.some(wp =>
       wp.days?.some(d => d.slots?.some(s => s.variantName))
@@ -561,6 +565,24 @@ function formatDate(iso) {
 const DAY_TYPE_LABELS = { heavy: "Maksimivoima", volume: "Perusvoima", speed: "Nopeusvoima", competition: "Kilpailu", rest: "Lepo" };
 function dayTypeLabel(dt) { return DAY_TYPE_LABELS[dt] || dt; }
 
+const MESO_TYPE_LABELS = {
+  default: "Perusjakso", hypertrofia: "Hypertrofiajakso", maksimivoima: "Maksimivoima-blokki",
+  eksentrinen: "Eksentrinen blokki", dup: "DUP-jakso", siirtyma: "Siirtymäjakso",
+  palautuminen: "Palautumisjakso", peaking: "Peaking",
+};
+
+// Factory lookup for mesocycle creation
+const MESO_FACTORIES = {
+  default: createDefaultMesocycle,
+  hypertrofia: createHypertrofiaMesocycle,
+  maksimivoima: createMaksimivoimaMesocycle,
+  eksentrinen: createEksenterinenMesocycle,
+  dup: createDUPMesocycle,
+  siirtyma: createSiirtymaMesocycle,
+  palautuminen: createPalautuminenMesocycle,
+  peaking: createPeakingMesocycle,
+};
+
 function formatDateShort(iso) {
   if (!iso) return "-";
   try {
@@ -695,7 +717,12 @@ function renderDashboard() {
         <div class="muted">Viikko ${weekNum} / ${weekLabel}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
-        ${isPeaking ? '<div class="chip" style="color:var(--warn);border-color:var(--warn);font-size:11px">🏆 PEAKING</div>' : ''}
+        ${(() => {
+          const mt = state.mesocycle?.type || "default";
+          const tpl = MESOCYCLE_TEMPLATES.find(t => t.id === mt);
+          const chipStyle = mt === "peaking" ? 'color:var(--warn);border-color:var(--warn)' : 'color:var(--acc);border-color:var(--acc)';
+          return tpl ? `<div class="chip" style="${chipStyle};font-size:11px">${tpl.icon} ${MESO_TYPE_LABELS[mt] || mt}</div>` : '';
+        })()}
         <div class="chip ${readinessClass}">${readinessEmoji} ${r.combined || "?"}</div>
       </div>
     </div>
@@ -1157,7 +1184,7 @@ function renderWorkoutSummary() {
 
 function renderMesocycle() {
   const meso = state.mesocycle;
-  if (!meso) return `<div class="fade-in"><div class="section-header">Mesosykli</div><div class="card"><div class="muted">Ei aktiivista mesosykliä</div><button class="btn btn-full mt" id="btn-new-meso">Aloita uusi mesosykli</button></div></div>`;
+  if (!meso) return `<div class="fade-in"><div class="section-header">Mesosykli</div><div class="card"><div class="muted">Ei aktiivista mesosykliä</div><button class="btn btn-full btn-big mt" id="btn-new-meso">📋 Valitse ohjelma</button></div></div>`;
 
   const currentWeek = getMesocycleWeek(meso, todayISO());
   const dayNames = { 1: "Ma", 2: "Ti", 3: "Ke", 4: "To", 5: "Pe", 6: "La", 7: "Su" };
@@ -1169,14 +1196,20 @@ function renderMesocycle() {
     <div class="card">
       <div class="flex-between">
         <div>
-          <div style="font-weight:600">Aloitus: ${formatDateShort(meso.startDateISO)}</div>
-          <div class="muted">${meso.weekCount} viikkoa</div>
+          <div style="font-weight:600">${MESO_TYPE_LABELS[meso.type] || meso.type}</div>
+          <div class="muted">Aloitus: ${formatDateShort(meso.startDateISO)} · ${meso.weekCount} vk</div>
         </div>
         <div style="display:flex;gap:4px;align-items:center">
           ${meso.type === "peaking" ? '<span class="chip" style="color:var(--warn);border-color:var(--warn);font-size:11px">🏆 PEAKING</span>' : ''}
           <div class="chip">${currentWeek ? `Viikko ${currentWeek}` : "Päättynyt"}</div>
         </div>
       </div>
+      ${(() => {
+        const suggested = SUGGESTED_NEXT_TEMPLATE[meso.type];
+        if (!suggested) return "";
+        const nextLabel = MESOCYCLE_TEMPLATES.find(t => t.id === suggested[0])?.label || suggested[0];
+        return `<div class="muted mt" style="font-size:11px">Suositeltu seuraava: ${nextLabel}</div>`;
+      })()}
     </div>
 
     ${meso.weekDefs.map(w => {
@@ -1215,8 +1248,7 @@ function renderMesocycle() {
       </div>`).join("")}
     </div>` : ""}
 
-    <button class="btn btn-outline btn-full mt" id="btn-new-meso">Aloita uusi mesosykli</button>
-    ${meso.type !== "peaking" ? '<button class="btn btn-full mt" id="btn-start-peaking" style="background:var(--warn);color:#000;font-weight:700">🏆 Aloita Peaking-ohjelma</button>' : ''}
+    <button class="btn btn-big btn-full mt" id="btn-new-meso" style="font-size:16px">📋 Vaihda ohjelma</button>
   </div>`;
 }
 
@@ -1569,40 +1601,77 @@ function bind() {
   // Active workout
   bindWorkoutEvents();
 
-  // Mesocycle
+  // Mesocycle — template chooser
   const newMesoBtn = $("#btn-new-meso");
   if (newMesoBtn) newMesoBtn.addEventListener("click", async () => {
-    const meso = createDefaultMesocycle(todayISO());
-    // Assign variant rotation to the new mesocycle
-    assignVariantRotation(meso.weekPlans);
+    // Sort: suggested first, then the rest
+    const currentType = state.mesocycle?.type || "default";
+    const suggested = SUGGESTED_NEXT_TEMPLATE[currentType] || [];
+
+    // Build ordered list: suggested templates first (with ⭐), then the rest
+    const orderedTemplates = [];
+    const usedIds = new Set();
+    for (const id of suggested) {
+      const tpl = MESOCYCLE_TEMPLATES.find(t => t.id === id);
+      if (tpl) { orderedTemplates.push({ ...tpl, isSuggested: true }); usedIds.add(id); }
+    }
+    for (const tpl of MESOCYCLE_TEMPLATES) {
+      if (!usedIds.has(tpl.id)) orderedTemplates.push({ ...tpl, isSuggested: false });
+    }
+
+    const options = orderedTemplates.map(tpl => ({
+      label: `${tpl.isSuggested ? "⭐ " : ""}${tpl.label}`,
+      desc: tpl.desc,
+      icon: tpl.icon,
+    }));
+
+    const chosen = await showListModal("Valitse ohjelma", options);
+    if (chosen === null) return;
+
+    const template = orderedTemplates[chosen];
+
+    // Peaking needs special handling (requires e1RM)
+    if (template.id === "peaking") {
+      const bw = state.settings?.bodyweightKg || 91;
+      const primaryMov = state.movements.find(m => m.isPrimary);
+      let e1rmExt = 93;
+      if (primaryMov) {
+        const sets = state.allSets.filter(s => s.movementId === primaryMov.movementId);
+        const computed = computeMovementE1RM(sets, true, bw);
+        if (computed !== null) e1rmExt = Math.max(0, computed - bw);
+      }
+
+      const confirmIdx = await showListModal(
+        `🏆 Peaking-ohjelma`,
+        [
+          { label: "Aloita peaking", desc: `e1RM: +${e1rmExt.toFixed(1)} kg · Opener: +${roundToHalf(e1rmExt * 0.92)} kg`, icon: "🏆" },
+          { label: "Peruuta", desc: "Palaa valikkoon", icon: "↩" },
+        ]
+      );
+      if (confirmIdx !== 0) return;
+
+      const peakMeso = createPeakingMesocycle(todayISO(), e1rmExt, bw);
+      await saveMesocycle(peakMeso);
+      state.mesocycle = peakMeso;
+      await computeRecommendation();
+      showToast("🏆 Peaking-ohjelma aloitettu!", "ok", 4000);
+      render();
+      return;
+    }
+
+    // All other templates
+    const factory = MESO_FACTORIES[template.id];
+    if (!factory) { showToast("Tuntematon malli", "bad"); return; }
+
+    const meso = factory(todayISO());
+    // Assign variant rotation (except templates with hardcoded variants like eksentrinen/siirtyma)
+    if (!["eksentrinen", "siirtyma"].includes(template.id)) {
+      assignVariantRotation(meso.weekPlans);
+    }
     await saveMesocycle(meso);
     state.mesocycle = meso;
     await computeRecommendation();
-    showToast("Uusi mesosykli aloitettu", "ok");
-    render();
-  });
-
-  // Start peaking program
-  const peakingBtn = $("#btn-start-peaking");
-  if (peakingBtn) peakingBtn.addEventListener("click", async () => {
-    const bw = state.settings?.bodyweightKg || 91;
-    // Get current e1RM external
-    const primaryMov = state.movements.find(m => m.isPrimary);
-    let e1rmExt = 93;
-    if (primaryMov) {
-      const sets = state.allSets.filter(s => s.movementId === primaryMov.movementId);
-      const computed = computeMovementE1RM(sets, true, bw);
-      if (computed !== null) e1rmExt = Math.max(0, computed - bw);
-    }
-
-    const confirmMsg = `🏆 Peaking-ohjelma (4 viikkoa)\n\nNykyinen e1RM: +${e1rmExt.toFixed(1)} kg\n\nOpener (92%): +${roundToHalf(e1rmExt * 0.92)} kg\n2. yritys (97%): +${roundToHalf(e1rmExt * 0.97)} kg\n3. yritys (102%): +${roundToHalf(e1rmExt * 1.02)} kg\n\nAloitetaanko peaking?`;
-    if (!confirm(confirmMsg)) return;
-
-    const peakMeso = createPeakingMesocycle(todayISO(), e1rmExt, bw);
-    await saveMesocycle(peakMeso);
-    state.mesocycle = peakMeso;
-    await computeRecommendation();
-    showToast("🏆 Peaking-ohjelma aloitettu!", "ok", 4000);
+    showToast(`${template.icon} ${template.label} aloitettu!`, "ok", 3000);
     render();
   });
 

@@ -1539,6 +1539,23 @@ async function recommendPeaking(options = {}) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// ANNUAL PERIODIZATION — SUGGESTED NEXT TEMPLATE
+// ═══════════════════════════════════════════════════════════════
+
+// Mapping: current mesocycle type → recommended next template(s)
+// First entry is the primary recommendation, rest are alternatives
+const SUGGESTED_NEXT_TEMPLATE = {
+  default:       ["hypertrofia", "maksimivoima", "dup"],           // Perusjaksosta eteenpäin
+  hypertrofia:   ["maksimivoima", "default", "dup"],               // Lihasmassasta voimaan
+  maksimivoima:  ["peaking", "eksentrinen", "palautuminen"],       // Maksimivoima → kilpailu tai palautuminen
+  eksentrinen:   ["palautuminen", "default", "maksimivoima"],      // Eksentrinen → palaudu ensin
+  dup:           ["maksimivoima", "hypertrofia", "eksentrinen"],    // DUP → voimablokkiin
+  siirtyma:      ["hypertrofia", "default", "dup"],                // GPP → uusi kasvujakso
+  palautuminen:  ["hypertrofia", "default", "siirtyma"],           // Palautuminen → uusi kasvu
+  peaking:       ["palautuminen", "siirtyma", "hypertrofia"],      // Kilpailun jälkeen → lepo
+};
+
+// ═══════════════════════════════════════════════════════════════
 // EXPORTS
 // ═══════════════════════════════════════════════════════════════
 
@@ -1548,6 +1565,7 @@ export {
   DAY_TYPE_SET_RECIPES,
   REST_RECOMMENDATIONS,
   READINESS_CLASSES,
+  SUGGESTED_NEXT_TEMPLATE,
   // Math
   median,
   mad,
