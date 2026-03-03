@@ -1,7 +1,7 @@
 // data.js — IndexedDB, stores, migration, CRUD, import/export, backup/restore, guards
-// LeVe Coach v1.0.0 — Schema version 3
+// LeVe Coach v3.0.0 — Schema version 3
 
-const APP_VERSION = "1.0.0";
+const APP_VERSION = "3.0.0";
 const SCHEMA_VERSION = 3;
 const DB_NAME = "LeVeCoachDB";
 const TIMEZONE = "Europe/Helsinki";
@@ -575,6 +575,38 @@ async function saveMeasurement(measurement) {
   return dbPut(STORES.measurements, measurement);
 }
 
+/**
+ * Palauttaa viimeisimmän kehonpainokirjauksen (kg).
+ * Fallback: settings.bodyweightKg tai 91.
+ * @param {object|null} settings — sovelluksen asetukset
+ * @returns {Promise<number>} kehonpaino kiloina
+ */
+async function getLatestBodyweight(settings = null) {
+  const bwMeasurements = await getMeasurementsByType("bodyweight");
+  if (bwMeasurements.length > 0) {
+    bwMeasurements.sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || ""));
+    if (bwMeasurements[0].value !== null && bwMeasurements[0].value !== undefined) {
+      return bwMeasurements[0].value;
+    }
+  }
+  return settings?.bodyweightKg || 91;
+}
+
+/**
+ * Tallentaa päivän kehonpainon mittaustaulukkoon.
+ * @param {number} weightKg — kehonpaino kiloina
+ * @param {string} dateISO — päivämäärä ISO-muodossa
+ */
+async function saveBodyweightEntry(weightKg, dateISO) {
+  return saveMeasurement({
+    type: "bodyweight",
+    dateISO: dateISO || todayISO(),
+    value: weightKg,
+    valueTransformed: weightKg,
+    source: "manual",
+  });
+}
+
 // Mesocycles
 async function getAllMesocycles() {
   return dbGetAll(STORES.mesocycles);
@@ -1013,7 +1045,7 @@ function createPeakingMesocycle(startDateISO, e1rmExternal, bodyweightKg) {
     openerPct: 0.92,    // ~92% of e1RM as opener
     secondPct: 0.97,    // ~97% for 2nd attempt
     thirdPct: 1.02,     // ~102% for 3rd attempt (PR attempt)
-    warmupPcts: [0.40, 0.60, 0.75, 0.85],
+    warmupPcts: [0.40, 0.60, 0.75, 0.85, 0.90],
   };
 
   return {
@@ -1024,7 +1056,8 @@ function createPeakingMesocycle(startDateISO, e1rmExternal, bodyweightKg) {
     peakingConfig,
     weekDefs: [
       { week: 1, deltaPctBase: 0.02, label: "Intensification", heavyReps: 2, heavyTargetVx: 1 },
-      { week: 2, deltaPctBase: 0.04, label: "Realization", heavyReps: 1, heavyTargetVx: 0 },
+      // Tarkastus 2026-03: V0→V1, failure-singlet peaking-vaiheessa on vaarallinen
+      { week: 2, deltaPctBase: 0.04, label: "Realization", heavyReps: 1, heavyTargetVx: 1 },
       { week: 3, deltaPctBase: -0.15, label: "Taper", heavyReps: 2, heavyTargetVx: 3 },
       { week: 4, deltaPctBase: 0, label: "Kilpailu", heavyReps: 1, heavyTargetVx: 0 },
     ],
@@ -1051,14 +1084,15 @@ function createPeakingMesocycle(startDateISO, e1rmExternal, bodyweightKg) {
           },
         ],
       },
-      // Week 2: Realization — 4×1 V0 + mini-backoff
+      // Week 2: Realization — 4×1 V1 + mini-backoff
+      // Tarkastus 2026-03: V0→V1, failure-singlet peaking-vaiheessa on vaarallinen
       {
         week: 2,
         days: [
           {
             dayOfWeek: 1, dayType: "heavy",
             slots: [
-              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä vastaote)", sets: 4, reps: 1, targetVx: 0 },
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä vastaote)", sets: 4, reps: 1, targetVx: 1 },
               { role: "backoff", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto (back-off)", variantName: "Kilpaveto (leveä vastaote)", sets: 2, reps: 3, targetVx: 2 },
               { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 3, reps: 5, targetVx: 2 },
             ],
@@ -1103,7 +1137,7 @@ function createPeakingMesocycle(startDateISO, e1rmExternal, bodyweightKg) {
           {
             dayOfWeek: 5, dayType: "competition",
             slots: [
-              { role: "warmup", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä vastaote)", sets: 4, reps: 1, targetVx: null, loadPctE1RM: [0.40, 0.60, 0.75, 0.85] },
+              { role: "warmup", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä vastaote)", sets: 5, reps: 1, targetVx: null, loadPctE1RM: [0.40, 0.60, 0.75, 0.85, 0.90] },
               { role: "opener", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä vastaote)", sets: 1, reps: 1, targetVx: 0, loadPctE1RM: 0.92 },
               { role: "attempt2", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä vastaote)", sets: 1, reps: 1, targetVx: 0, loadPctE1RM: 0.97 },
               { role: "attempt3", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä vastaote)", sets: 1, reps: 1, targetVx: 0, loadPctE1RM: 1.02 },
@@ -1922,6 +1956,8 @@ export {
   getMeasurementsByType,
   getMeasurementsByDate,
   saveMeasurement,
+  getLatestBodyweight,
+  saveBodyweightEntry,
   // Mesocycles
   MESOCYCLE_TEMPLATES,
   getAllMesocycles,

@@ -261,7 +261,7 @@ import {
   getVariantsForMovement, getVariantByName, getAllVariants,
   getAllSessions, getSession, saveSession, deleteSession,
   getSetsForSession, getAllSets, saveSet, saveSets, deleteSet,
-  saveMeasurement, getMeasurementsByType,
+  saveMeasurement, getMeasurementsByType, getLatestBodyweight, saveBodyweightEntry,
   MESOCYCLE_TEMPLATES,
   getActiveMesocycle, saveMesocycle, createDefaultMesocycle, createPeakingMesocycle, getAllMesocycles,
   createHypertrofiaMesocycle, createMaksimivoimaMesocycle, createEksenterinenMesocycle,
@@ -295,6 +295,7 @@ import {
   REST_RECOMMENDATIONS,
   DEFAULT_VARIANT_MODIFIERS,
   SUGGESTED_NEXT_TEMPLATE,
+  readinessTestLoad,
   variantLoadModifier, variantRepOverride, assignVariantRotation,
   computeAttemptLoads,
 } from "./engine.js";
@@ -317,6 +318,8 @@ const state = {
   // HRV & velocity readiness inputs for today
   todayHRV: null,
   todayVelocity: null,
+  // Latest bodyweight
+  latestBodyweight: null,
   // Adaptation history for volume optimization
   adaptationHistory: [],
   // Rest timer
@@ -334,6 +337,7 @@ async function init() {
   state.movements = await getAllMovements();
   state.sessions = await getAllSessions();
   state.allSets = await getAllSets();
+  state.latestBodyweight = await getLatestBodyweight(state.settings);
   state.mesocycle = await getActiveMesocycle();
   if (!state.mesocycle) {
     state.mesocycle = createDefaultMesocycle(todayISO());
@@ -358,6 +362,7 @@ async function refresh() {
   state.movements = await getAllMovements();
   state.sessions = await getAllSessions();
   state.allSets = await getAllSets();
+  state.latestBodyweight = await getLatestBodyweight(state.settings);
   state.mesocycle = await getActiveMesocycle();
   await computeReadiness();
   await computeRecommendation();
@@ -401,7 +406,7 @@ async function computeRecommendation() {
   const primaryMov = state.movements.find(m => m.isPrimary);
   state.recommendation = await recommend({
     settings,
-    bodyweightKg: settings.bodyweightKg || 91,
+    bodyweightKg: state.latestBodyweight || settings.bodyweightKg || 91,
     dateISO: todayISO(),
     mesocycle: state.mesocycle,
     sessions: state.sessions,
@@ -881,7 +886,7 @@ function renderReadiness() {
     <div class="card">
       <label>Readiness-testi velocity (m/s)</label>
       <input type="number" inputmode="decimal" step="0.01" id="input-vel" value="${state.todayVelocity || ""}" placeholder="esim. 0.53">
-      <div class="muted mt">1. repin mean velocity readiness-testistä (+${state.recommendation?.e1rmExternal ? roundToHalf(state.recommendation.e1rmExternal * 0.6) : 40} kg × 2, max intent, ~60% e1RM)</div>
+      <div class="muted mt">1. repin mean velocity readiness-testistä (+${readinessTestLoad(state.recommendation?.e1rmExternal)} kg × 2, max intent, ~60% e1RM)</div>
     </div>
 
     <button class="btn btn-full mb" id="btn-save-readiness">Tallenna readiness</button>
@@ -913,11 +918,16 @@ function renderWorkout() {
 function renderWorkoutSetup() {
   const rec = state.recommendation;
   const dayType = rec?.dayType || "heavy";
+  const lastBw = state.latestBodyweight || state.settings?.bodyweightKg || 91;
   return `<div class="fade-in">
     <div class="section-header">Treeni</div>
     <div class="card">
       <div style="font-size:16px;font-weight:600">${formatDate(todayISO())} — ${dayTypeLabel(dayType)}</div>
       <div class="muted">Viikko ${rec?.weekNum || "?"} / ${rec?.weekLabel || ""}</div>
+    </div>
+    <div class="card">
+      <label style="margin-top:0">Kehonpaino tänään (kg)</label>
+      <input type="number" inputmode="decimal" step="0.1" id="input-bw-today" value="${lastBw}" placeholder="esim. 91.0">
     </div>
     <button class="btn btn-big btn-full" id="btn-begin-workout">▶ ALOITA TREENI</button>
   </div>`;
@@ -958,15 +968,16 @@ function renderActiveWorkout() {
     ? REST_RECOMMENDATIONS[state.workout.dayType] || REST_RECOMMENDATIONS.heavy
     : REST_RECOMMENDATIONS.accessory;
 
-  // Rest timer display
-  const restTimerHTML = state.restTimerSeconds > 0
-    ? `<div id="rest-timer-display" style="text-align:center;margin:8px 0;font-size:24px;font-weight:700;color:var(--acc)">${formatRestTime(state.restTimerSeconds)}<div class="muted" style="font-size:11px;font-weight:400">Suositus: ${restRec.label}</div></div>`
+  // Rest timer display — persistoitu: näytä myös overtime (negatiivinen) tilanne
+  const timerActive = state.restTimerInterval !== null;
+  const restTimerHTML = timerActive
+    ? `<div id="rest-timer-display" style="text-align:center;margin:8px 0;font-size:24px;font-weight:700;color:${state.restTimerSeconds >= 0 ? 'var(--acc)' : 'var(--warn)'}">${state.restTimerSeconds >= 0 ? formatRestTime(state.restTimerSeconds) : '+' + formatRestTime(Math.abs(state.restTimerSeconds))}<div class="muted" style="font-size:11px;font-weight:400">Suositus: ${restRec.label}</div></div>`
     : `<div id="rest-timer-display" style="text-align:center;margin:8px 0;font-size:24px;font-weight:700;color:var(--acc);display:none"></div>`;
 
   // Completed sets summary (work sets only, warmup omitted)
   const completedWorkSets = exercise.sets.filter(s => s.completed && !s.isWarmup);
   const completedSetsHTML = completedWorkSets.map((s, i) =>
-    `<div class="muted" style="padding:2px 0;font-size:12px">✓ Sarja ${i + 1}: ${s.loadKg} kg × ${s.reps} V${s.actualVx ?? "?"} ${s.velocity ? `(${s.velocity} m/s)` : ""}</div>`
+    `<div class="muted" style="padding:2px 0;font-size:12px">✓ Sarja ${i + 1}: ${s.loadKg} kg × ${s.reps}${s.attemptedReps ? ` (yritetty ${s.attemptedReps})` : ""} V${s.actualVx ?? "?"} ${s.velocity ? `(${s.velocity} m/s)` : ""}</div>`
   ).join("");
 
   // Exercise list sidebar
@@ -999,6 +1010,7 @@ function renderActiveWorkout() {
         </div>
       </div>
 
+      ${completedWorkSets.length >= 2 ? renderVelocityTrendSVG(completedWorkSets) : ""}
       ${completedSetsHTML ? `<div style="margin-top:8px;padding:8px;background:var(--card2);border-radius:var(--radius-sm)">${completedSetsHTML}</div>` : ""}
 
       ${restTimerHTML}
@@ -1040,6 +1052,12 @@ function renderActiveWorkout() {
 
         <label style="margin-top:14px">Velocity (valinnainen)</label>
         <input type="number" inputmode="decimal" step="0.01" id="input-set-velocity" placeholder="Setin mean velocity m/s">
+
+        <div id="attempted-reps-container" class="hidden">
+          <label style="margin-top:14px">Yritetty toistoja (failure)</label>
+          <input type="number" inputmode="numeric" min="1" max="30" id="input-attempted-reps" value="${(currentSet.targetReps || 3) + 1}" placeholder="esim. 3">
+          <div class="muted" style="font-size:11px">Montako toistoa yritettiin? (epäonnistunut yritys mukaan)</div>
+        </div>
         `}
       </div>
 
@@ -1097,6 +1115,45 @@ function stopRestTimer() {
     state.restTimerInterval = null;
   }
   state.restTimerSeconds = 0;
+}
+
+/**
+ * Piirtää minimaisen SVG velocity-trendikuvaajan tehtyjen sarjojen velocity-arvoista.
+ * X: sarjanumero, Y: velocity. Värikoodaus suhteessa 1. sarjaan.
+ * @param {Array} completedSets — tehdyt sarjat joilla on velocity-arvo
+ * @returns {string} SVG-merkkijono tai tyhjä
+ */
+function renderVelocityTrendSVG(completedSets) {
+  const velSets = completedSets.filter(s => s.velocity !== null && s.velocity !== undefined && s.velocity > 0);
+  if (velSets.length < 2) return "";
+  const w = 200, h = 60, pad = 6;
+  const vels = velSets.map(s => s.velocity);
+  const first = vels[0];
+  const minV = Math.min(...vels) * 0.9;
+  const maxV = Math.max(...vels) * 1.1;
+  const rangeV = maxV - minV || 0.1;
+  const xStep = (w - 2 * pad) / (vels.length - 1);
+
+  const points = vels.map((v, i) => {
+    const x = pad + i * xStep;
+    const y = h - pad - ((v - minV) / rangeV) * (h - 2 * pad);
+    return { x, y, v };
+  });
+
+  const polyline = points.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const dots = points.map(p => {
+    const pct = p.v / first;
+    const color = pct >= 0.90 ? "var(--ok)" : pct >= 0.75 ? "var(--warn)" : "var(--bad)";
+    return `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="${color}"/>`;
+  }).join("");
+
+  return `<div style="margin-top:6px">
+    <div class="muted" style="font-size:10px;margin-bottom:2px">Velocity-trendi</div>
+    <svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="display:block">
+      <polyline points="${polyline}" fill="none" stroke="var(--dim)" stroke-width="1.5" stroke-linejoin="round"/>
+      ${dots}
+    </svg>
+  </div>`;
 }
 
 function renderWorkoutExerciseComplete(exercise) {
@@ -1172,6 +1229,12 @@ function renderWorkoutSummary() {
     }).join("")}
 
     ${adaptationPreview}
+
+    <div class="card">
+      <label style="margin-top:0">Muistiinpanot (valinnainen)</label>
+      <textarea id="input-session-notes" maxlength="500" placeholder="Esim. kyynärpää kiristi, ote lipesi 3. sarjassa..." style="min-height:60px"></textarea>
+      <div class="muted" style="text-align:right;font-size:11px"><span id="notes-char-count">0</span>/500</div>
+    </div>
 
     <button class="btn btn-ok btn-full mb" id="btn-save-workout">💾 Tallenna treeni</button>
     <button class="btn btn-outline btn-full" id="btn-discard-workout">Hylkää</button>
@@ -1365,6 +1428,7 @@ function renderHistory() {
           return `<div class="muted" style="padding:2px 0">${mov?.name || "?"}: ${set.externalLoadKg || 0} kg × ${set.reps || 0} V${set.actualVx ?? "?"}</div>`;
         }).join("")}
         ${sets.length > 5 ? `<div class="muted">...ja ${sets.length - 5} sarjaa lisää</div>` : ""}
+        ${s.sessionNotes ? `<div style="margin-top:6px;padding:6px 8px;background:var(--card2);border-radius:var(--radius-sm);font-size:12px;color:var(--muted)">📝 ${s.sessionNotes}</div>` : ""}
       </div>`;
     }).join("")}
   </div>`;
@@ -1522,7 +1586,7 @@ function renderSettingsView() {
     <div class="card">
       <div class="card-title">Diagnostiikka</div>
       <div class="muted">
-        Versio: 2.4.0 | Schema: 3<br>
+        Versio: 3.0.0 | Schema: 3<br>
         Sessioita: ${state.sessions.length} | Sarjoja: ${state.allSets.length}<br>
         Liikkeitä: ${state.movements.length}
       </div>
@@ -1596,7 +1660,21 @@ function bind() {
 
   // Workout setup
   const beginBtn = $("#btn-begin-workout");
-  if (beginBtn) beginBtn.addEventListener("click", () => startWorkout());
+  if (beginBtn) beginBtn.addEventListener("click", async () => {
+    // Tallenna kehonpaino
+    const bwInput = $("#input-bw-today");
+    if (bwInput) {
+      const bwVal = parseNumericInput(bwInput.value);
+      if (bwVal !== null && bwVal >= 30 && bwVal <= 250) {
+        await saveBodyweightEntry(bwVal, todayISO());
+        state.latestBodyweight = bwVal;
+        // Päivitä myös asetuksiin
+        state.settings.bodyweightKg = bwVal;
+        await saveSettings(state.settings);
+      }
+    }
+    await startWorkout();
+  });
 
   // Active workout
   bindWorkoutEvents();
@@ -2104,6 +2182,15 @@ function bindWorkoutEvents() {
       $$("[data-vara]").forEach(b => b.classList.remove("selected"));
       btn.classList.add("selected");
       selectedVara = parseInt(btn.dataset.vara);
+      // Näytä attemptedReps-kenttä vain kun V0 (failure)
+      const attemptedContainer = $("#attempted-reps-container");
+      if (attemptedContainer) {
+        if (selectedVara === 0) {
+          attemptedContainer.classList.remove("hidden");
+        } else {
+          attemptedContainer.classList.add("hidden");
+        }
+      }
       checkNextSetEnabled();
     });
   });
@@ -2180,6 +2267,15 @@ function bindWorkoutEvents() {
     currentSet.velocity = velocity;
     currentSet.completed = true;
 
+    // Tallenna attemptedReps (failure-tilanteessa)
+    if (selectedVara === 0) {
+      const attemptedInput = $("#input-attempted-reps");
+      const attemptedVal = attemptedInput ? parseInt(attemptedInput.value) : null;
+      currentSet.attemptedReps = (attemptedVal && attemptedVal > 0) ? attemptedVal : (selectedReps + 1);
+    } else {
+      currentSet.attemptedReps = null;
+    }
+
     // Failure reaction
     if (selectedVara === 0) {
       const isPrimary = exercise.role === "primary";
@@ -2224,8 +2320,9 @@ function bindWorkoutEvents() {
     const exercise = w.exercises[w.currentExerciseIdx];
     if (!exercise) return;
     const lastSet = exercise.sets[exercise.sets.length - 1];
+    const maxIdx = exercise.sets.reduce((max, s) => Math.max(max, s.idx || 0), 0);
     exercise.sets.push({
-      idx: exercise.sets.length,
+      idx: maxIdx + 1,
       targetReps: lastSet?.targetReps || 3,
       targetVx: lastSet?.targetVx || 2,
       loadKg: lastSet?.loadKg || null,
@@ -2337,10 +2434,18 @@ function bindWorkoutEvents() {
     render();
   });
 
+  // Notes char counter
+  const notesInput = $("#input-session-notes");
+  const notesCount = $("#notes-char-count");
+  if (notesInput && notesCount) {
+    notesInput.addEventListener("input", () => { notesCount.textContent = notesInput.value.length; });
+  }
+
   // Save workout
   const saveBtn = $("#btn-save-workout");
   if (saveBtn) saveBtn.addEventListener("click", async () => {
-    await saveWorkoutToDb();
+    const sessionNotes = ($("#input-session-notes")?.value || "").trim().slice(0, 500);
+    await saveWorkoutToDb(sessionNotes);
     showToast("Treeni tallennettu!", "ok");
     state.workout = null;
     await refresh();
@@ -2391,11 +2496,15 @@ function bindWorkoutEvents() {
   });
 }
 
-async function saveWorkoutToDb() {
+/**
+ * Tallentaa treenin tietokantaan.
+ * @param {string} sessionNotes — käyttäjän muistiinpanot (max 500 merkkiä)
+ */
+async function saveWorkoutToDb(sessionNotes = "") {
   const w = state.workout;
   if (!w) return;
 
-  const bw = state.settings?.bodyweightKg || 91;
+  const bw = state.latestBodyweight || state.settings?.bodyweightKg || 91;
   const rec = state.recommendation;
 
   // Save session
@@ -2406,7 +2515,7 @@ async function saveWorkoutToDb() {
     mesocycleWeek: rec?.weekNum || null,
     mesocycleId: state.mesocycle?.mesocycleId || null,
     bodyweightKg: bw,
-    notes: "",
+    sessionNotes: sessionNotes || "",
     readinessCapLevel: state.readiness.capLevel,
     readinessDetails: state.readiness,
   };
@@ -2443,6 +2552,7 @@ async function saveWorkoutToDb() {
         velocityLossPercent: null,
         tempo: null,
         restSec: null,
+        attemptedReps: s.attemptedReps || null,
         deviceMeta: null,
         manualOverride: null,
         timestamp: new Date().toISOString(),

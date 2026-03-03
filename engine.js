@@ -979,6 +979,23 @@ function checkStagnation(progress) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// READINESS TEST LOAD (skaalautuva)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Laskee readiness-velocity-testin kuorman e1RM:n perusteella.
+ * ~60% e1RM:stä, pyöristettynä lähimpään 2.5 kg. Min 20, max 80.
+ * @param {number|null} e1rmExternal — urheilijan e1RM lisäpaino (kg)
+ * @returns {number} readiness-testikuorma (kg)
+ */
+function readinessTestLoad(e1rmExternal) {
+  if (e1rmExternal === null || e1rmExternal === undefined || e1rmExternal <= 0) return 40;
+  const raw = e1rmExternal * 0.6;
+  const rounded = Math.round(raw / 2.5) * 2.5;
+  return clamp(rounded, 20, 80);
+}
+
+// ═══════════════════════════════════════════════════════════════
 // SPEED DAY LOAD
 // ═══════════════════════════════════════════════════════════════
 
@@ -1624,6 +1641,8 @@ export {
   checkStagnation,
   // Default plan
   generateDefaultDayPlan,
+  // Readiness test
+  readinessTestLoad,
   // Speed
   speedDayLoad,
   // HRV
