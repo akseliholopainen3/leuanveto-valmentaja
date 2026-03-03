@@ -1,7 +1,7 @@
 // data.js — IndexedDB, stores, migration, CRUD, import/export, backup/restore, guards
 // LeVe Coach v3.0.0 — Schema version 3
 
-const APP_VERSION = "3.0.0";
+const APP_VERSION = "3.1.0";
 const SCHEMA_VERSION = 3;
 const DB_NAME = "LeVeCoachDB";
 const TIMEZONE = "Europe/Helsinki";
@@ -1034,6 +1034,11 @@ function createDefaultMesocycle(startDateISO) {
 }
 
 // ── Peaking mesocycle (4-week competition prep) ──
+// Redesign 2026-03: Gradual volume taper, maintain frequency, sufficient accessories
+// Vk1: 3×/vk kova, täydet tukiliikkeet
+// Vk2: 3×/vk kova intensiteetti, tukiliikkeet -30%
+// Vk3: 2×/vk taper, intensiteetti ylläpidossa, volyymi -50%, minimaaliset tukiliikkeet
+// Vk4: 2 päivää — opener-harjoitus + kilpailu
 function createPeakingMesocycle(startDateISO, e1rmExternal, bodyweightKg) {
   const e1rm = e1rmExternal || 93;
   const bw = bodyweightKg || 91;
@@ -1056,86 +1061,116 @@ function createPeakingMesocycle(startDateISO, e1rmExternal, bodyweightKg) {
     peakingConfig,
     weekDefs: [
       { week: 1, deltaPctBase: 0.02, label: "Intensification", heavyReps: 2, heavyTargetVx: 1 },
-      // Tarkastus 2026-03: V0→V1, failure-singlet peaking-vaiheessa on vaarallinen
       { week: 2, deltaPctBase: 0.04, label: "Realization", heavyReps: 1, heavyTargetVx: 1 },
-      { week: 3, deltaPctBase: -0.15, label: "Taper", heavyReps: 2, heavyTargetVx: 3 },
+      { week: 3, deltaPctBase: -0.10, label: "Taper", heavyReps: 2, heavyTargetVx: 3 },
       { week: 4, deltaPctBase: 0, label: "Kilpailu", heavyReps: 1, heavyTargetVx: 0 },
     ],
     weekPlans: [
-      // Week 1: Intensification — 5×2 V1 + backoff + reduced accessories
+      // ── VIIKKO 1: INTENSIFICATION (3×/vk) ──
+      // Kova maksimivoima + volyymipäivä + nopeuspäivä
+      // Täydet tukiliikkeet — ylläpidetään kuntoa
       {
         week: 1,
         days: [
           {
-            dayOfWeek: 1, dayType: "heavy",
+            dayOfWeek: 1, dayType: "heavy", label: "Maksimivoima (kilpaveto)",
             slots: [
               { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä vastaote)", sets: 5, reps: 2, targetVx: 1 },
-              { role: "backoff", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto (back-off)", variantName: "Kilpaveto (leveä vastaote)", sets: 3, reps: 4, targetVx: 2 },
-              { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 3, reps: 5, targetVx: 2 },
-              { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto", sets: 3, reps: 6, targetVx: 3 },
+              { role: "backoff", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä vastaote)", sets: 3, reps: 4, targetVx: 2 },
+              { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto", sets: 4, reps: 6, targetVx: 2 },
+              { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 3, reps: 6, targetVx: 2 },
+              { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hauiskääntö tanko", sets: 3, reps: 8, targetVx: null },
             ],
           },
           {
-            dayOfWeek: 4, dayType: "volume",
+            dayOfWeek: 3, dayType: "volume", label: "Perusvoima + tuki",
             slots: [
               { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä vastaote)", sets: 4, reps: 4, targetVx: 2 },
-              { role: "accessory", category: "vertikaalityöntö", defaultMovementName: "Pystypunnerrus", sets: 3, reps: 6, targetVx: 3 },
+              { role: "accessory", category: "vertikaaliveto", defaultMovementName: "Ylätalja", sets: 4, reps: 8, targetVx: 3 },
+              { role: "accessory", category: "vertikaalityöntö", defaultMovementName: "Pystypunnerrus", sets: 3, reps: 8, targetVx: 3 },
+              { role: "accessory", category: "ojentajaekstensio", defaultMovementName: "Tricep pushdown", sets: 3, reps: 10, targetVx: null },
+              { role: "accessory", category: "core", defaultMovementName: "Hanging leg raise", sets: 3, reps: 10, targetVx: null },
+            ],
+          },
+          {
+            dayOfWeek: 5, dayType: "speed", label: "Nopeusvoima",
+            slots: [
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä vastaote)", sets: 5, reps: 2, targetVx: 4 },
+              { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Alatalja", sets: 3, reps: 8, targetVx: null },
+              { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hammer curl", sets: 3, reps: 10, targetVx: null },
             ],
           },
         ],
       },
-      // Week 2: Realization — 4×1 V1 + mini-backoff
-      // Tarkastus 2026-03: V0→V1, failure-singlet peaking-vaiheessa on vaarallinen
+      // ── VIIKKO 2: REALIZATION (3×/vk) ──
+      // Kovempi intensiteetti pääliikkeessä, tukiliikkeitä -30%
       {
         week: 2,
         days: [
           {
-            dayOfWeek: 1, dayType: "heavy",
+            dayOfWeek: 1, dayType: "heavy", label: "Maksimivoima (kova)",
             slots: [
               { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä vastaote)", sets: 4, reps: 1, targetVx: 1 },
-              { role: "backoff", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto (back-off)", variantName: "Kilpaveto (leveä vastaote)", sets: 2, reps: 3, targetVx: 2 },
-              { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 3, reps: 5, targetVx: 2 },
+              { role: "backoff", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä vastaote)", sets: 2, reps: 3, targetVx: 2 },
+              { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto", sets: 3, reps: 6, targetVx: 2 },
+              { role: "accessory", category: "horisontaalityöntö", defaultMovementName: "Penkkipunnerrus", sets: 3, reps: 6, targetVx: 2 },
             ],
           },
           {
-            dayOfWeek: 4, dayType: "volume",
+            dayOfWeek: 3, dayType: "volume", label: "Perusvoima + ylläpito",
             slots: [
               { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä vastaote)", sets: 3, reps: 3, targetVx: 2 },
-              { role: "accessory", category: "vertikaalityöntö", defaultMovementName: "Pystypunnerrus", sets: 3, reps: 6, targetVx: 3 },
+              { role: "accessory", category: "vertikaaliveto", defaultMovementName: "Ylätalja", sets: 3, reps: 8, targetVx: 3 },
+              { role: "accessory", category: "vertikaalityöntö", defaultMovementName: "Pystypunnerrus", sets: 3, reps: 8, targetVx: 3 },
+              { role: "accessory", category: "core", defaultMovementName: "Hanging leg raise", sets: 3, reps: 10, targetVx: null },
+            ],
+          },
+          {
+            dayOfWeek: 5, dayType: "speed", label: "Nopeusvoima (kevyt)",
+            slots: [
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä vastaote)", sets: 4, reps: 2, targetVx: 4 },
+              { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hauiskääntö tanko", sets: 2, reps: 10, targetVx: null },
             ],
           },
         ],
       },
-      // Week 3: Taper — light, 3×2 V3, no accessories
+      // ── VIIKKO 3: TAPER (2×/vk) ──
+      // Volyymi -50%, intensiteetti ylläpidossa, minimaaliset tukiliikkeet
+      // Ei nopeuspäivää — superkompensaatio alkaa
       {
         week: 3,
         days: [
           {
-            dayOfWeek: 1, dayType: "heavy",
+            dayOfWeek: 1, dayType: "heavy", label: "Maksimivoima (taper)",
             slots: [
-              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä vastaote)", sets: 3, reps: 2, targetVx: 3 },
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä vastaote)", sets: 3, reps: 2, targetVx: 2 },
+              { role: "accessory", category: "horisontaaliveto", defaultMovementName: "Penkkiveto", sets: 3, reps: 6, targetVx: 3 },
+              { role: "accessory", category: "hauisfleksio", defaultMovementName: "Hauiskääntö tanko", sets: 2, reps: 8, targetVx: null },
             ],
           },
           {
-            dayOfWeek: 4, dayType: "volume",
+            dayOfWeek: 4, dayType: "volume", label: "Kevyt ylläpito",
             slots: [
-              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä vastaote)", sets: 2, reps: 3, targetVx: 4 },
+              { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä vastaote)", sets: 2, reps: 3, targetVx: 3 },
+              { role: "accessory", category: "vertikaaliveto", defaultMovementName: "Ylätalja", sets: 3, reps: 8, targetVx: 4 },
             ],
           },
         ],
       },
-      // Week 4: Competition — Monday opener, Friday competition
+      // ── VIIKKO 4: KILPAILU (2 päivää) ──
+      // Ma: Kevyt opener-harjoitus (aktivointi, ei kuormita)
+      // Pe: Kilpailupäivä — lämmittely + 3 yritystä
       {
         week: 4,
         days: [
           {
-            dayOfWeek: 1, dayType: "heavy",
+            dayOfWeek: 1, dayType: "heavy", label: "Opener (aktivointi)",
             slots: [
               { role: "primary", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä vastaote)", sets: 2, reps: 2, targetVx: 4 },
             ],
           },
           {
-            dayOfWeek: 5, dayType: "competition",
+            dayOfWeek: 5, dayType: "competition", label: "Kilpailupäivä",
             slots: [
               { role: "warmup", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä vastaote)", sets: 5, reps: 1, targetVx: null, loadPctE1RM: [0.40, 0.60, 0.75, 0.85, 0.90] },
               { role: "opener", category: "vertikaaliveto", defaultMovementName: "Lisäpainoleuanveto", variantName: "Kilpaveto (leveä vastaote)", sets: 1, reps: 1, targetVx: 0, loadPctE1RM: 0.92 },

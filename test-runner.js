@@ -408,7 +408,7 @@ async function testBackupRoundtrip() {
     await initDB();
     const backup = await exportFullBackup();
     assert(backup._meta !== undefined, "Backup: _meta exists");
-    assert(backup._meta.appVersion === "3.0.0", "Backup: appVersion = 3.0.0");
+    assert(backup._meta.appVersion === "3.1.0", "Backup: appVersion = 3.1.0");
     // Roundtrip import
     await importFullBackup(backup);
     const backup2 = await exportFullBackup();
