@@ -28,7 +28,7 @@ const TIMEZONE = "Europe/Helsinki";
 // v4.52.35 (M2/OBS-022): sisä-blokki-intensifikaatio — primary reps+Vx-ramppi
 // vk2/3/5/7/9/11 (HANDOFF §4). Bump triggeröi auto-rebuildin → ramppi aktivoituu
 // olemassa olevissa asennuksissa ilman edistyksen menetystä.
-const PROGRAM_BUILD_VERSION = "4.52.35";
+const PROGRAM_BUILD_VERSION = "4.58.0";
 
 // ── Store names ──
 const STORES = {
@@ -7510,6 +7510,22 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
           sets:1, reps:1, targetVx:3, loadPct:0.82, suggestedLoadKg:seedL(0.82), note:"@82% = lämmittely", allowVelocityInput:true },
         { role:"secondary", category:"vertikaaliveto", defaultMovementName:"Lisäpainoleuanveto",
           sets:1, reps:1, targetVx:3, loadPct:0.88, suggestedLoadKg:seedL(0.88), note:"Opener @88%", competitionLift:true, allowVelocityInput:true },
+        // TAPER-VOLYYMIKORJAUS (2026-08-12): tukiliikkeet takaisin. Raa'at slotit
+        // ILMAN slotId:tä — ACCESSORY_SLOT_CATALOG:in peaking-repScheme pakottaisi
+        // sets:2 (engine.js:7286 `phaseRep?.sets ?? slot.sets`), mikä on koko
+        // volyymiromahduksen rakenteellinen juuri KUN slotilla on slotId.
+        // Liikevalinta: VAIN liikkeitä jotka esiintyvät ohjelmassa vk 5-12, jotta
+        // kuorma resolvoituu historiasta eikä jää tyhjäksi. (Ensiluonnos käytti
+        // Penkkipunnerrusta ja Tricep pushdownia joita ohjelma EI käytä lainkaan —
+        // verifiointi kaatoi sen.) V4 = ei lähelle failurea, ei CNS-kuormaa.
+        // Vaakaveto EI ole minkään kisaliikkeen kattama (MU/leuka/dippi = pysty) →
+        // se on tukiliike joka PEAKKAA muiden mukana: raskaampi, matalampi toisto,
+        // varat säilyttäen (V4). Vrt. ACCESSORY_SLOT_CATALOG pull-horizontal-heavy
+        // peaking = 2×6 V4. Atletin haaste 12.8.2026 — perusteltu, korjattu 8 → 6.
+        { role:"accessory", category:"horisontaaliveto", defaultMovementName:"Pendlay row",
+          sets:4, reps:6, targetVx:4, _noBlockScale:true, note:"Raskas vaakaveto — peakkaa, mutta V4 (varaa jää)" },
+        { role:"accessory", category:"hauisfleksio", defaultMovementName:"Hauiskääntö tanko",
+          sets:3, reps:10, targetVx:4, _noBlockScale:true, note:"Kyynärpään tuki vetoon — kevyt" },
         ...finisherMinimal("taper-aktivointi"),
       ]},
       { dayOfWeek:2, dayType:"heavy", label:"TI — Taper kyykky",
@@ -7524,7 +7540,15 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
           sets:1, reps:1, targetVx:3, loadPct:0.85, suggestedLoadKg:seedK(0.85), note:"@85%", isBarbell:true, allowVelocityInput:true },
         { role:"secondary", category:"alaraaja", defaultMovementName:"Takakyykky",
           sets:1, reps:1, targetVx:3, loadPct:0.90, suggestedLoadKg:seedK(0.90), note:"Opener @90%", isBarbell:true, competitionLift:true, allowVelocityInput:true },
-        ...finisherMinimal("taper-aktivointi"),
+        // TAPER-VOLYYMIKORJAUS (2026-08-12): ks. MA-päivän perustelu.
+        // HUOM: kevyt motor-pattern-kyykky (2×3 @60 %) POISTETTIIN verifioinnissa —
+        // se pudotti kyykyn KISA-AVAUKSEN 141 → 131 kg (per-laji-e1RM 156,7 → 145,6),
+        // koska kevyt sarja painaa liikkeen e1RM-arviota jolta attemptsPct lasketaan.
+        // Bar-feel tulee jo saman päivän singleistä @85 % ja @90 %.
+        { role:"accessory", category:"alaraaja", defaultMovementName:"Jalkaprässi",
+          sets:4, reps:8, targetVx:4, _noBlockScale:true, note:"Quad-volyymi ilman selkä-CNS:ää — V4" },
+        { role:"accessory", category:"core", defaultMovementName:"Hanging leg raise",
+          sets:3, reps:10, targetVx:3, _noBlockScale:true, note:"Vartalon jäykkyys kyykkyyn" },
       ]},
       { dayOfWeek:4, dayType:"heavy", label:"TO — Taper dippi",
         warmup: [
@@ -7540,7 +7564,15 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
           sets:1, reps:1, targetVx:3, loadPct:0.82, suggestedLoadKg:seedD(0.82), note:"@82%", allowVelocityInput:true },
         { role:"secondary", category:"horisontaalityöntö", defaultMovementName:"Lisäpainodippi",
           sets:1, reps:1, targetVx:3, loadPct:0.88, suggestedLoadKg:seedD(0.88), note:"Opener @88%", competitionLift:true, allowVelocityInput:true },
-        ...finisherMinimal("taper-aktivointi"),
+        // TAPER-VOLYYMIKORJAUS (2026-08-12): ks. MA-päivän perustelu.
+        // Vaakatyöntö on vain osittain dipin kattama → peakkaa. Katalogi bench-heavy
+        // peaking = 2×5 V4. Korjattu 6 → 5 (atletin haaste 12.8.2026).
+        { role:"accessory", category:"horisontaalityöntö", defaultMovementName:"Close-grip bench",
+          sets:4, reps:5, targetVx:4, _noBlockScale:true, note:"Raskas vaakatyöntö — peakkaa, V4 (varaa jää)" },
+        { role:"accessory", category:"ojentajaekstensio", defaultMovementName:"Skull crusher",
+          sets:3, reps:10, targetVx:4, _noBlockScale:true, note:"Dipin lukituksen tuki — kevyt" },
+        { role:"accessory", category:"vertikaalityöntö", defaultMovementName:"Pystypunnerrus",
+          sets:3, reps:6, targetVx:4, _noBlockScale:true, note:"Pystytyöntö dipin lukitukseen — raskaampi, V4" },
       ]},
       { dayOfWeek:6, dayType:"volume", label:"LA — MU opener",
         warmup: [
@@ -7554,6 +7586,14 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
         slots:[
         { role:"primary", category:"vertikaaliveto", defaultMovementName:"Muscle-up",
           sets:3, reps:1, targetVx:null, suggestedLoadKg:5, note:"Opener +5 kg", competitionLift:true },
+        // TAPER-VOLYYMIKORJAUS (2026-08-12): ks. MA-päivän perustelu. LA oli aiemmin
+        // 1 slotti / 3 sarjaa koko päivässä — kevyin treenipäivä koko 16 vk:n ohjelmassa.
+        { role:"accessory", category:"vertikaaliveto", defaultMovementName:"Leuanveto chest-to-bar",
+          sets:3, reps:5, targetVx:3, _noBlockScale:true, note:"Vetovolyymi kisaliikkeen ympärille" },
+        { role:"accessory", category:"horisontaalityöntö", defaultMovementName:"Lisäpainodippi",
+          sets:3, reps:5, targetVx:3, _noBlockScale:true, note:"MU:n yläasennon tuki — kevyt kuorma" },
+        { role:"accessory", category:"core", defaultMovementName:"Pallof press",
+          sets:3, reps:10, targetVx:4, _noBlockScale:true, note:"10 toistoa per puoli — anti-rotaatio" },
       ]},
     ]},
     { week:16, days:[

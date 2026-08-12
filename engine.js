@@ -6574,7 +6574,21 @@ async function recommend(options = {}) {
     if (blockScalar < 1.0) {
       const blockNum = getBlockForWeek(weekNum);
       dayPlan = { ...dayPlan, slots: dayPlan.slots.map(s => {
-        if (s.role === "accessory" && s.sets > 1) {
+        // v4.58.0: _noBlockScale — opt-out blokkiskalaarille taper-viikolla.
+        //
+        // TARKKUUS (verifioitu counterfactualilla — aiempi kommentti oli VÄÄRÄ):
+        // skalaari EI aiheuttanut vk 15:n −83 %:n romahdusta. Katalogi-slotit
+        // (slotId) menevät resolveDayPlanSlots-vaiheen läpi VASTA tämän jälkeen,
+        // jolloin `phaseRep?.sets ?? slot.sets` ylikirjoittaa skalaarin tuloksen —
+        // todiste: Face pull materialisoituu 2×15 vaikka määrittely sanoo 2×12.
+        // Vk 15:n romahdus johtui viikon MÄÄRITTELYSTÄ (1 tukiliike/päivä, LA 0).
+        //
+        // Lippu on silti kantava: uudet taper-slotit ovat RAAKOJA (ei slotId) →
+        // katalogi ei ohita niitä ja skalaari puree. Ilman lippua vk 15 = 32 sarjaa
+        // (−63 %, Bosquet-ikkunan ulkopuolella); lipun kanssa 44 (−49 %).
+        // Readiness-pohjainen accessoryCap (yllä, ×0.7) EI ole lipun piirissä —
+        // se on autoregulaatiota, ei blokkirakennetta.
+        if (s.role === "accessory" && s.sets > 1 && !s._noBlockScale) {
           const scaledSets = Math.max(1, Math.round(s.sets * blockScalar));
           return { ...s, sets: scaledSets, _blockScaled: true };
         }
