@@ -217,6 +217,39 @@ function roundToHalf(value) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// PERSISTOINTIKONTRAKTI: slotti-rooli → tallennettu setti (v4.58.0)
+// ═══════════════════════════════════════════════════════════════
+//
+// MIKSI TÄMÄ ON TÄÄLLÄ EIKÄ index.html:ssä:
+// test-runner.js importoi vain engine.js:stä ja data.js:stä, joten index.html:n
+// sisäiset funktiot ovat rakenteellisesti testaamattomia. Kirjoituspolku on
+// kuitenkin se kerros jossa `completed`-kenttä on kadonnut KOLME kertaa
+// (v4.34.36, H-006a-fix8, H-019 OSA A) ja jossa slotti-rooli tuhoutuu. Puhdas
+// funktio täällä = ensimmäinen koneellinen lukko sille kontraktille.
+//
+// TUNNETTU RAJOITUS (ei korjata tässä — H-021-kandidaatti):
+// Mappaus on lossy: 9 slotti-roolia → 4 setRole-arvoa. `secondary`, `opener`,
+// `attempt2`, `attempt3` romahtavat kaikki arvoon "accessory", joten raskas
+// kisa-avausyritys on datassa erottamaton kevyestä apuliikesarjasta. Engine
+// kiertää tämän jo kahdessa kohdassa (3482, 5380). Roolin säilyttäminen on
+// oma kierroksensa — tämä funktio vain TEKEE KONTRAKTIN NÄKYVÄKSI ja lukittavaksi.
+//
+// isWarmup: lämmittely ei ole suorituskykydataa eikä sitä persistoida
+// (index.html:15945 `if (s.isWarmup) continue;`). Ennen v4.58.0 lippu asetettiin
+// vain UI:n rakentamalle rampille, eikä peaking-mesosyklissä ramppia rakenneta
+// lainkaan → kisapäivän `role:"warmup"` -singlet @40-88 % tallentuivat työsarjoina
+// ja päätyivät e1RM-mediaani-ikkunaan josta yrityskuormat lasketaan.
+function resolveSetPersistence(slotRole) {
+  return {
+    setRole: slotRole === "primary" ? "top"
+      : slotRole === "backoff" ? "backoff"
+      : slotRole === "calibration" ? "calibration"
+      : "accessory",
+    isWarmup: slotRole === "warmup",
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
 // e1RM CALCULATIONS
 // ═══════════════════════════════════════════════════════════════
 
@@ -10261,6 +10294,8 @@ ${JSON.stringify(json, null, 2)}
 // ═══════════════════════════════════════════════════════════════
 
 export {
+  // v4.58.0: persistointikontrakti (slotti-rooli → tallennettu setti)
+  resolveSetPersistence,
   // Constants
   DAY_TYPE_MULTIPLIERS,
   DAY_TYPE_SET_RECIPES,

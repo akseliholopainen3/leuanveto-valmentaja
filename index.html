@@ -1239,6 +1239,8 @@ import {
   computePrimerBaselineDrift,
   // v4.52.16 H-007 B2 (A2+A3): HRV-baseline + drift-detection
   computeHrvBaseline, computeHrvBaselineDrift,
+  // v4.58.0: persistointikontrakti (slotti-rooli → setRole + isWarmup)
+  resolveSetPersistence,
 } from "./engine.js";
 
 // ═══════════════════════════════════════════════════════════════
@@ -13790,6 +13792,15 @@ async function startWorkout(backfillDateISO = null) {
           // H-017 D1 gate 1: lukitse suunniteltu kuorma ENNEN kuin manuaalimuokkaus
           // (#btn-edit-load) voi ylikirjoittaa loadKg:n → D1:n alituksen referenssi + A3 min().
           plannedLoadKg: setLoad,
+          // v4.58.0: slottipohjainen LÄMMITTELY merkitään lämmittelyksi.
+          // Ennen tätä `isWarmup` asetettiin VAIN UI:n rakentamalle rampille
+          // (~13685), eikä peaking-mesosyklissä ramppia rakenneta lainkaan
+          // (13623 `if (!isPeakingMeso)`). Seuraus: kisapäivän `role:"warmup"`
+          // -slottien 4-5 lämmittelysingleä @40-88 % tallentuivat TYÖSARJOINA
+          // (setRole "accessory") ja päätyivät e1RM-mediaani-ikkunaan
+          // (engine.js:6285 / 7721) juuri ennen kuin yrityskuormat lasketaan
+          // siitä samasta arviosta. Lämmittely ei ole suorituskykydataa.
+          isWarmup: resolveSetPersistence(slot.role).isWarmup,
           reps: null,
           actualVx: null,
           velocity: null,
@@ -15975,10 +15986,9 @@ async function saveWorkoutToDb(sessionNotes = "") {
       if (!s.completed) continue;
       // v4.27.15: "calibration"-rooli → setRole "calibration" (engine laskee
       // näille puhtaan Epleyn ja override:aa e1RM:n; ks. computeMovementProgress).
-      const savedSetRole = exercise.role === "primary" ? "top"
-        : exercise.role === "backoff" ? "backoff"
-        : exercise.role === "calibration" ? "calibration"
-        : "accessory";
+      // v4.58.0: kontrakti siirretty engine.js:ään puhtaaksi funktioksi jotta
+      // se on koneellisesti lukittavissa (test-runner ei näe index.html:ää).
+      const savedSetRole = resolveSetPersistence(exercise.role).setRole;
       // v4.38.0 (Phase 1B): mvReps[] per-rep MPV-array. Lasketaan UI-tilan
       // s.mvReps:istä, ja jos array on validi (≥2 ei-null arvoa), johdetaan
       // velocityMean = mean, velocityPeak = max, velocityRep1 = arr[0],

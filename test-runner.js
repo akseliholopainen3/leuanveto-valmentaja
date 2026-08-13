@@ -95,6 +95,8 @@ import {
   // H-018 OSA 1 (OBS-040): e1RM-kortin kanoninen lähde-lukko
   computeMovementE1RMBest,
   computeMovementE1RMHistory,
+  // v4.58.0: persistointikontraktin lukko
+  resolveSetPersistence,
 } from "./engine.js";
 
 import {
@@ -147,6 +149,48 @@ function assertEqual(actual, expected, name) {
 // ═══════════════════════════════════════════════════════════════
 // TESTS
 // ═══════════════════════════════════════════════════════════════
+
+// v4.58.0 — PERSISTOINTIKONTRAKTIN LUKKO (slotti-rooli → tallennettu setti)
+//
+// Miksi: index.html:n kirjoituspolku on rakenteellisesti testaamaton (tämä
+// runner importoi vain engine.js:stä ja data.js:stä), ja juuri siitä kerroksesta
+// `completed`-kenttä on kadonnut KOLME kertaa. Kontrakti on nyt puhtaana
+// funktiona engine.js:ssä ja tämä testi lukitsee sen.
+//
+// Kattaa sekä tunnettu-positiivisen (lämmittely EI persistoidu) että
+// tunnettu-negatiivisen (työsarja persistoituu) — Selkäranka 6.
+function testSetPersistenceContract() {
+  // ── setRole-mappaus, kaikki 9 slotti-roolia ──
+  assertEqual(resolveSetPersistence("primary").setRole, "top", "persist: primary → top");
+  assertEqual(resolveSetPersistence("backoff").setRole, "backoff", "persist: backoff → backoff");
+  assertEqual(resolveSetPersistence("calibration").setRole, "calibration", "persist: calibration → calibration");
+  assertEqual(resolveSetPersistence("accessory").setRole, "accessory", "persist: accessory → accessory");
+  // Tunnettu lossy-mappaus (H-021-kandidaatti): nämä NELJÄ romahtavat samaksi.
+  // Testi ei väitä että se on oikein — se lukitsee nykytilan näkyväksi, jotta
+  // korjaus (roolin säilytys) on tietoinen muutos eikä hiljainen ajautuma.
+  for (const r of ["secondary", "opener", "attempt2", "attempt3"]) {
+    assertEqual(resolveSetPersistence(r).setRole, "accessory", `persist: ${r} → accessory (lossy, tunnettu)`);
+  }
+  assertEqual(resolveSetPersistence("warmup").setRole, "accessory", "persist: warmup → accessory");
+  // Tuntematon/puuttuva rooli ei saa kaataa eikä tuottaa undefined-roolia
+  assertEqual(resolveSetPersistence(undefined).setRole, "accessory", "persist: undefined → accessory (fallback)");
+
+  // ── isWarmup: tunnettu-positiivinen ──
+  assert(resolveSetPersistence("warmup").isWarmup === true,
+    "persist: warmup-slotti merkitään lämmittelyksi (ei persistoidu työsarjana)");
+
+  // ── isWarmup: tunnettu-negatiivinen — nämä EIVÄT saa kadota tallennuksesta ──
+  for (const r of ["primary", "secondary", "backoff", "accessory", "calibration",
+                   "opener", "attempt2", "attempt3", undefined]) {
+    assert(resolveSetPersistence(r).isWarmup === false,
+      `persist: ${r ?? "undefined"} EI ole lämmittely (työsarja säilyy)`);
+  }
+
+  // ── Regressio-lukko: kisapäivän yritys ei saa koskaan tulla suodatetuksi pois ──
+  const opener = resolveSetPersistence("opener");
+  assert(opener.isWarmup === false && opener.setRole === "accessory",
+    "persist: kisa-avausyritys persistoituu (isWarmup=false)");
+}
 
 function testMath() {
   // median + MAD
@@ -4972,6 +5016,7 @@ export async function runTests() {
 
   console.log("=== LeVe AI Test Suite ===");
 
+  testSetPersistenceContract();
   testMath();
   testZClassification();
   testReadiness23Rule();
