@@ -235,10 +235,19 @@ function roundToHalf(value) {
 // oma kierroksensa — tämä funktio vain TEKEE KONTRAKTIN NÄKYVÄKSI ja lukittavaksi.
 //
 // isWarmup: lämmittely ei ole suorituskykydataa eikä sitä persistoida
-// (index.html:15945 `if (s.isWarmup) continue;`). Ennen v4.58.0 lippu asetettiin
+// (saveWorkoutToDb: `if (s.isWarmup) continue;`). Ennen v4.58.0 lippu asetettiin
 // vain UI:n rakentamalle rampille, eikä peaking-mesosyklissä ramppia rakenneta
-// lainkaan → kisapäivän `role:"warmup"` -singlet @40-88 % tallentuivat työsarjoina
-// ja päätyivät e1RM-mediaani-ikkunaan josta yrityskuormat lasketaan.
+// lainkaan → kisapäivän `role:"warmup"` -singlet @40-88 % tallentuivat työsarjoina.
+//
+// TARKKUUS (verifioitu 13.8.2026 — aiempi kommentti oikaisi ketjun):
+// ne EIVÄT päätyneet yrityskuormien laskentaan — molemmat attempt-polut
+// suodattavat setRolen (top/readiness_test/calibration). Ne päätyivät
+// `computeMovementE1RM`:ään, jonka suodatin on vain `externalLoadKg>0 && reps>=1`
+// → e1RM-kortti (Edistyminen/Liikepankki), ja sieltä epäsuorasti γ-blokin
+// B8-esitäytön kautta yrityskuormiin. Kolmivaiheinen ketju, ei yksivaiheinen.
+//
+// RAJAUS: `role:"warmup"` -slotteja on repossa 2 (molemmat type:"peaking"
+// -kisapäivissä). streetlifting_16w:ssä niitä EI OLE → muutos on sille inertti.
 function resolveSetPersistence(slotRole) {
   return {
     setRole: slotRole === "primary" ? "top"
@@ -6617,8 +6626,9 @@ async function recommend(options = {}) {
         // Vk 15:n romahdus johtui viikon MÄÄRITTELYSTÄ (1 tukiliike/päivä, LA 0).
         //
         // Lippu on silti kantava: uudet taper-slotit ovat RAAKOJA (ei slotId) →
-        // katalogi ei ohita niitä ja skalaari puree. Ilman lippua vk 15 = 32 sarjaa
-        // (−63 %, Bosquet-ikkunan ulkopuolella); lipun kanssa 44 (−49 %).
+        // katalogi ei ohita niitä ja skalaari puree. Ilman lippua vk 15 = 31 sarjaa
+        // (−64 %, Bosquet-ikkunan ulkopuolella); lipun kanssa 44 (−49 %).
+        // (Luku verifioitu counterfactualilla 13.8.2026 — aiempi kommentti sanoi 32.)
         // Readiness-pohjainen accessoryCap (yllä, ×0.7) EI ole lipun piirissä —
         // se on autoregulaatiota, ei blokkirakennetta.
         if (s.role === "accessory" && s.sets > 1 && !s._noBlockScale) {

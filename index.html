@@ -13797,9 +13797,9 @@ async function startWorkout(backfillDateISO = null) {
           // (~13685), eikä peaking-mesosyklissä ramppia rakenneta lainkaan
           // (13623 `if (!isPeakingMeso)`). Seuraus: kisapäivän `role:"warmup"`
           // -slottien 4-5 lämmittelysingleä @40-88 % tallentuivat TYÖSARJOINA
-          // (setRole "accessory") ja päätyivät e1RM-mediaani-ikkunaan
-          // (engine.js:6285 / 7721) juuri ennen kuin yrityskuormat lasketaan
-          // siitä samasta arviosta. Lämmittely ei ole suorituskykydataa.
+          // (setRole "accessory") ja päätyivät `computeMovementE1RM`:n mediaani-
+          // ikkunaan → e1RM-kortti. Kontrakti + tarkka ketju: engine.js
+          // resolveSetPersistence. Lämmittely ei ole suorituskykydataa.
           isWarmup: resolveSetPersistence(slot.role).isWarmup,
           reps: null,
           actualVx: null,
