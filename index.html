@@ -15527,6 +15527,37 @@ function bindWorkoutEvents() {
     } catch (_) {}
     return { load: null, source: null };
   }
+  // v4.63.0 (O3-korjaus): TOISTOTAVOITE seuraa liikettä, ei jää isäntäslottiin.
+  //
+  // Kenttähavainto 12.8.2026 (O3): atletti vaihtoi Face pullin (slotti
+  // "scapular-control", peaking-repScheme 2×15 V4) Tricep pushdowniin. Vaihto
+  // päivitti KUORMAN vaihdetun liikkeen omasta progressiosta (90 → 92,5 kg)
+  // mutta jätti TOISTOTAVOITTEEN isäntäslotista → ruudulle "15 toistoa · V4
+  // @ 92,5 kg", vaikka liikkeen oma historia oli 8 toistoa @ 90 kg V2.
+  // Fysiologisesti mahdoton: kuorma nousi ja toistotavoite lähes kaksinkertaistui.
+  //
+  // Periaate: kun liike vaihdetaan, KOKO resepti seuraa liikettä — ei vain kuorma.
+  // Lähde on sama kuin kuormalla: vaihdetun liikkeen oma edellinen sessio.
+  // Jos historiaa ei ole, tavoite jätetään ennalleen (ei arvata).
+  function resolveSwapRepTarget(mov) {
+    try {
+      const prior = computePriorSessionSummary(mov.movementId, state.workout?.sessionId);
+      const ref = prior?.heaviest;
+      if (!ref) return null;
+      const reps = ref.targetReps ?? ref.reps;
+      if (reps == null) return null;
+      return { reps, vx: ref.targetVx ?? null };
+    } catch (_) { return null; }
+  }
+  // Sama sääntö kuin kuormalla: vain TEKEMÄTTÖMIIN sarjoihin.
+  function applySwapRepTarget(exercise, t) {
+    if (!t) return;
+    for (const s of (exercise.sets || [])) {
+      if (s.isWarmup || s.completed) continue;
+      s.targetReps = t.reps;
+      if (t.vx != null) s.targetVx = t.vx;
+    }
+  }
   // Kuorma vain TEKEMÄTTÖMIIN työsarjoihin — tehdyt sarjat ovat historiallista totuutta.
   function applySwapLoad(exercise, newLoad) {
     exercise.loadKg = newLoad;
@@ -15753,6 +15784,7 @@ function bindWorkoutEvents() {
           const refSetA = (exercise.sets || []).find(s => !s.isWarmup && !s.completed) || (exercise.sets || []).find(s => !s.isWarmup);
           const { load: defLoad } = await resolveSwapLoadKg(defMov, refSetA, (exercise.sets || []).filter(s => !s.isWarmup).length);
           applySwapLoad(exercise, defLoad);
+          applySwapRepTarget(exercise, resolveSwapRepTarget(defMov)); // O3: myös palautuksessa
           savePendingWorkoutLocal(state.workout);
         }
         showToast(`Palautettu ohjelman oletus: ${slotDefaultName}`, "ok");
@@ -15770,6 +15802,7 @@ function bindWorkoutEvents() {
         const refSetB = (exercise.sets || []).find(s => !s.isWarmup && !s.completed) || (exercise.sets || []).find(s => !s.isWarmup);
         const { load: accLoad } = await resolveSwapLoadKg(chosen, refSetB, (exercise.sets || []).filter(s => !s.isWarmup).length);
         applySwapLoad(exercise, accLoad);
+        applySwapRepTarget(exercise, resolveSwapRepTarget(chosen)); // O3: resepti seuraa liikettä
         savePendingWorkoutLocal(state.workout);
         // Persist override on mesocycle
         if (state.mesocycle) {
@@ -15813,6 +15846,7 @@ function bindWorkoutEvents() {
       const refSetL = (exercise.sets || []).find(s => !s.isWarmup && !s.completed) || (exercise.sets || []).find(s => !s.isWarmup);
       const { load: legLoad } = await resolveSwapLoadKg(chosenMov || { name: picked.name, category: picked.category }, refSetL, (exercise.sets || []).filter(s => !s.isWarmup).length);
       applySwapLoad(exercise, legLoad);
+      if (chosenMov) applySwapRepTarget(exercise, resolveSwapRepTarget(chosenMov)); // O3
       savePendingWorkoutLocal(state.workout);
       render();
     }
