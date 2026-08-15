@@ -5907,6 +5907,16 @@ function priorSetDaysAgoLabel(priorSet) {
 // Vx kertoo todellisesta intensiteetistä — sama tonnage V0:lla on RIIPPUMATTA
 // kovempaa kuin V4:llä. Kerroin: V0 = 1.10 (failure, max), V5 = 0.85 (fresh).
 // Käytetään trend-vertailussa (tämän session target vs. edellinen heaviest).
+// v4.61.0: kehonpaino-ankkuroidun liikkeen tunnistin. Oli aiemmin lokaali const
+// bindWorkoutEvents():n sisällä; nostettu moduulitasolle koska renderActiveWorkout()
+// tarvitsee sitä O9-korjauksessa (0 kg = "kehonpainolla", ei "−100 %").
+// Funktiodeklaraatio (ei const) → hoistattu, joten kutsujärjestys ei sido.
+function _isSystemLoadName(name) {
+  const n = (name || "").toLowerCase();
+  if (/laite|kone|machine|prässi|smith|talja|cable/.test(n)) return false; // laite-versiot = external stack
+  return /leuanveto|leuka|dippi|muscle-up|push-?up|hspu|nordic/.test(n);   // kehonpaino+lisäpaino-perhe
+}
+
 function effortScore(loadKg, reps, vx) {
   const l = loadKg ?? 0;
   const r = reps ?? 0;
@@ -7152,7 +7162,15 @@ function renderActiveWorkout() {
       const _rrPrev = _rrPrior?.heaviest?.externalLoadKg ?? null;
       const _rrCur = currentSet.loadKg ?? null;
       let _rrHead = "";
-      if (_rrPrev != null && _rrCur != null && _rrPrev > 0) {
+      // v4.61.0 (O9-korjaus): kehonpaino-ankkuroidulla liikkeellä 0 kg ulkoista
+      // kuormaa EI ole "−100 %" vaan "kehonpainolla". Muscle-upin ulkoinen e1RM
+      // on muutamia kiloja, joten submaksimaalinen prosentti menee luonnollisesti
+      // BW-only-alueelle. Prosenttinarratiivi teki siitä katastrofin näköisen.
+      if (_rrCur === 0 && _isSystemLoadName(exercise.name)) {
+        _rrHead = _rrPrev != null && _rrPrev > 0
+          ? `kehonpainolla — ei lisäpainoa (viime kerta +${_rrPrev} kg)`
+          : `kehonpainolla — ei lisäpainoa`;
+      } else if (_rrPrev != null && _rrCur != null && _rrPrev > 0) {
         const _rrD = _rrCur - _rrPrev;
         const _rrPct = Math.round((_rrCur / _rrPrev - 1) * 100);
         _rrHead = _rrD > 0.25 ? `viime kerta ${_rrPrev} → nyt ${_rrCur} kg (+${_rrPct} %)`
@@ -15457,11 +15475,9 @@ function bindWorkoutEvents() {
   // kuorma, oma historia 105 kg). Resoluutio: 1) MovementProgress.suggestedLoadKg (F-3:
   // sallittu eri-liike-apuliikkeille), 2) kanoninen Best-e1RM × vReps(reps+Vx) (system-load-
   // muunnos), 3) ei dataa → null = tyhjä kenttä (rehellinen; sama kuin cold-start-accessory).
-  const _isSystemLoadName = (name) => {
-    const n = (name || "").toLowerCase();
-    if (/laite|kone|machine|prässi|smith|talja|cable/.test(n)) return false; // laite-versiot = external stack
-    return /leuanveto|leuka|dippi|muscle-up|push-?up|hspu|nordic/.test(n);   // kehonpaino+lisäpaino-perhe
-  };
+  // v4.61.0: _isSystemLoadName nostettu moduulitasolle (ks. effortScore-lähistö) —
+  // sitä tarvitaan nyt myös renderActiveWorkout():ssa (O9: BW-only-narratiivi),
+  // joka on eri funktioscope. Yksi määrittely, ei kahta ajautuvaa kopiota.
   async function resolveSwapLoadKg(mov, refSet, workSetsCount) {
     try {
       const prog = await getMovementProgress(mov.movementId);
@@ -15481,8 +15497,18 @@ function bindWorkoutEvents() {
         // K3-1: sama across-set-väsymysvara kuin engine-preskriptiossa (viimeinenkin sarja kestää).
         const pct = vRepsToExpectedPct(reps + vx + acrossSetAllowance(workSetsCount));
         if (e1rmExt && e1rmExt > 0 && pct !== null) {
-          const load = _isSystemLoadName(mov.name) ? (e1rmExt + bw) * pct - bw : e1rmExt * pct;
+          const isSys = _isSystemLoadName(mov.name);
+          const load = isSys ? (e1rmExt + bw) * pct - bw : e1rmExt * pct;
           if (load > 0) return { load: roundToHalf(load), source: "e1RM" };
+          // v4.61.0 (O9-korjaus): BW-ankkuroidulla liikkeellä NEGATIIVINEN ulkoinen
+          // kuorma on validi tulos — se tarkoittaa "kehonpainolla, ei lisäpainoa".
+          // Esim. muscle-up jonka e1RM_ext on 4,5 kg: 92 % systeemistä =
+          // (4,5+85)×0,92 − 85 = −2,7 kg → oikea resepti on BW-only.
+          // Ennen tämä putosi läpi ja palautti null → ruudulle "0 kg" ilman
+          // selitystä, ja narratiivi väitti "viime kerta 5 → nyt 0 kg (−100 %)".
+          // Kenttähavainto 12.8.2026 (O9). Nyt 0 palautetaan EKSPLISIITTISESTI
+          // omalla lähdetunnisteella, jotta UI voi kertoa mistä on kyse.
+          if (isSys) return { load: 0, source: "bw-only" };
         }
       }
     } catch (_) {}
