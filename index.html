@@ -14192,6 +14192,7 @@ function bindWorkoutEvents() {
     const currentSet = exercise?.sets[w.currentSetIdx];
     if (!currentSet) return;
     currentSet.completed = true;
+    currentSet.completedAt = new Date().toISOString(); // v4.64.0 (O4): todellinen suoritusaika
     currentSet.reps = currentSet.targetReps;
     currentSet.actualVx = null; // warmup — no Vara tracking
     // Capture readiness velocity from last warmup of primary lift
@@ -14220,6 +14221,7 @@ function bindWorkoutEvents() {
     exercise.sets.forEach(s => {
       if (s.isWarmup && !s.completed) {
         s.completed = true;
+        s.completedAt = new Date().toISOString(); // v4.64.0 (O4)
         s.reps = s.targetReps;
         s.actualVx = null;
       }
@@ -14315,6 +14317,7 @@ function bindWorkoutEvents() {
     currentSet.velocity = velocity;
     currentSet.mvReps = mvReps;
     currentSet.completed = true;
+    currentSet.completedAt = new Date().toISOString(); // v4.64.0 (O4): todellinen suoritusaika
 
     // Tallenna attemptedReps (failure-tilanteessa)
     if (selectedVara === 0) {
@@ -15473,6 +15476,7 @@ function bindWorkoutEvents() {
       if (setData.skipped && edit.reps != null) {
         setData.skipped = false;
         setData.completed = true;
+        setData.completedAt = new Date().toISOString(); // v4.64.0 (O4)
       }
       savePendingWorkoutLocal(state.workout);
       // Jos kyseessä V0 → attemptedReps ei ole enää relevantti (ellei käyttäjä
@@ -16288,7 +16292,17 @@ async function saveWorkoutToDb(sessionNotes = "") {
         attemptedReps: s.attemptedReps || null,
         deviceMeta: null,
         manualOverride: null,
-        timestamp: new Date().toISOString(),
+        // v4.64.0 (O4-korjaus): TODELLINEN suoritusaika, ei tallennusaika.
+        // Ennen tähän leimattiin new Date() saveWorkoutToDb:n silmukassa, joka
+        // iteroi w.exercises-taulukkoa OHJELMAN SLOT-JÄRJESTYKSESSÄ. Kaikki
+        // timestampit syntyivät siis sekunnin sisällä slot-järjestyksessä, ja
+        // Koti-kortin TOTEUMA lajittelee timestampilla → lajittelu oli inertti
+        // ja näytti aina ohjelman järjestyksen. Kenttähavainto 12.8.2026 (O4):
+        // "miksi järjestys on eri vs oikeasti järjestys treenissä".
+        // Nyt s.completedAt leimataan hetkellä jolloin atletti merkitsee sarjan
+        // tehdyksi. Fallback new Date() koskee vanhoja pending-treenejä joissa
+        // kenttää ei vielä ole (recovery-polku) — ei regressio.
+        timestamp: s.completedAt || new Date().toISOString(),
         // v4.32.5 (#2): Liikekohtainen muistiinpano (per-treeni). Tallennetaan
         // jokaiseen liikkeen settiin samalla arvolla → näkyy historiassa.
         exerciseNote: exercise.exerciseNote || null,
