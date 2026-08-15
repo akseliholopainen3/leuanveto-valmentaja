@@ -6631,7 +6631,12 @@ async function recommend(options = {}) {
         // (Luku verifioitu counterfactualilla 13.8.2026 — aiempi kommentti sanoi 32.)
         // Readiness-pohjainen accessoryCap (yllä, ×0.7) EI ole lipun piirissä —
         // se on autoregulaatiota, ei blokkirakennetta.
-        if (s.role === "accessory" && s.sets > 1 && !s._noBlockScale) {
+        // v4.59.0: competitionLift EI ole koskaan skaalattavaa apuliikevolyymiä.
+        // Löydetty coach-judge-probella 13.8.2026: kisapäivän Takakyykky on
+        // roolilla "accessory" (data.js vk 16 SU + vk 17 LA), joten blokki 4:n
+        // skalaari ×0.50 puolitti sen 3 → 2 → atletti sai KAKSI yritystä kolmen
+        // sijaan. Vika oli tuotannossa v4.25 P1-10:stä asti, ei uusi.
+        if (s.role === "accessory" && s.sets > 1 && !s._noBlockScale && !s.competitionLift) {
           const scaledSets = Math.max(1, Math.round(s.sets * blockScalar));
           return { ...s, sets: scaledSets, _blockScaled: true };
         }
