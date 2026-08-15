@@ -311,6 +311,16 @@ const PRESET_MOVEMENTS = [
   // Etukyykky = Front squat (sama liike, suomi/englanti-nimi). Itsenäinen Taso 2 omalla cal-arvolla
   // (L47 vastaus 4): EI cross-reference Takakyykky-e1RM:iin koska painot eroavat liian paljon.
   { name: "Etukyykky", category: "alaraaja", isPrimary: false, isPreset: true, tier: 2 },
+  // v4.60.0 (O8-korjaus): katalogin kattavuusaukot. Akselin kenttähavainto 12.8.2026:
+  // "esim hack kyykky puuttuu yms". Puuttuva liike pakottaa ad hoc -kirjaukseen jota
+  // progressioseuranta ei tavoita — sama juuri kuin sunnuntaitreenin katoaminen.
+  // Mukana myös atletin oman 9.8. treenin liikkeet joita katalogissa ei ollut.
+  { name: "Hack-kyykky", category: "alaraaja", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Goblet-kyykky", category: "alaraaja", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Sissy squat", category: "alaraaja", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Yhden käden ylätalja", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Pull-over (kaapeli)", category: "vertikaaliveto", isPrimary: false, isPreset: true, tier: 3 },
+  { name: "Kahvakuulaheilautus", category: "lonkkahingaus", isPrimary: false, isPreset: true, tier: 3 },
   // v4.34.14: EZ-tanko declined-penkkipunnerrus — käyttäjän gym-spesifi laite + tanko.
   // Klassinen dippi-tukiliike: sama kuormavektori kuin dipissä (alas + ulos rinnan tasolle),
   // EZ-tanko vähentää kyynärpään ulkokierto-stressiä vs suora tanko. Triceps-dominantti.

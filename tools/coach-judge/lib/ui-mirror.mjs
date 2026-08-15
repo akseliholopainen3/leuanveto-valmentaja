@@ -47,11 +47,16 @@ export function mirrorPriorSessionSummary(allSets, sessions, movementId, exclude
   const latestSession = grouped[0];
   const sets = latestSession.sets;
 
-  // ← index.html:5852-5856 — TONNAASI-maksimi, ei kuorma-maksimi. PEILATTU SELLAISENAAN.
+  // ← index.html `computePriorSessionSummary`
+  // v4.60.0: KORJATTU TUOTANNOSSA — `heaviest` on nyt suurin ULKOINEN KUORMA
+  // (tasatilanteessa enemmän toistoja). Ennen tämä oli tonnaasi-maksimi
+  // (kuorma × toistot), mikä tuotti O2:n: 177,5×1 · 167,5×2 · 160×3 → "viime
+  // kerta 160". Peili seuraa tuotantoa; älä palauta vanhaa muotoa.
   const heaviest = sets.reduce((max, s) => {
-    const tonn = (s.externalLoadKg || 0) * (s.reps || 0);
-    const maxTonn = (max?.externalLoadKg || 0) * (max?.reps || 0);
-    return tonn > maxTonn ? s : max;
+    const l = s.externalLoadKg ?? -Infinity, ml = max?.externalLoadKg ?? -Infinity;
+    if (l > ml) return s;
+    if (l === ml && (s.reps ?? 0) > (max?.reps ?? 0)) return s;
+    return max;
   }, sets[0]);
 
   const loads = sets.map(s => s.externalLoadKg);
@@ -113,10 +118,13 @@ export function mirrorPrevSessionLine(priorSummary, todayISO, maxShown = 4) {
 // "Paluuramppi käynnissä" -haara on kuollutta koodia ja atletti näkee AINA sinisen
 // "ei kevene automaattisesti" -bannerin, myös silloin kun engine keventi kuorman.
 export function mirrorBreakBanner({ rec, exerciseName, movementId, allSets, todayISO, slotReload }) {
-  // Peilaa rivin 7525 lookup: ylätason rec.slots (ei dayPlan.slots).
-  const topLevelSlots = rec?.slots || [];
-  const _rl = topLevelSlots.find(s =>
-    s.role === "primary" && s._reload && s.defaultMovementName === exerciseName)?._reload;
+  // v4.60.0: KORJATTU TUOTANNOSSA. Ennen lookup luki ylätason `rec.slots`, jota ei
+  // ole olemassa → vihreä haara oli kuollutta koodia ja atletti näki aina sinisen
+  // "ei kevene automaattisesti" -bannerin (O1). Nyt luetaan `rec.dayPlan.slots`
+  // ja rooliehto on poistettu (engine asettaa _reloadin myös ei-primary-sloteille).
+  const slots = rec?.dayPlan?.slots || [];
+  const _rl = slots.find(s =>
+    s._reload && (s.movementName || s.defaultMovementName) === exerciseName)?._reload;
 
   if (_rl) {
     return {

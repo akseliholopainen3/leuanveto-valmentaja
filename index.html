@@ -5850,12 +5850,30 @@ function computePriorSessionSummary(movementId, excludeSessionId) {
     .sort((a, b) => b.dateISO.localeCompare(a.dateISO));
   const latestSession = sessions[0];
   const sets = latestSession.sets;
-  // Tunnista heaviest setti (max load × reps tonnage proxy)
+  // v4.60.0 (O2-korjaus): `heaviest` on nyt OIKEASTI raskain — suurin ulkoinen
+  // kuorma, tasatilanteessa useampi toisto. Ennen tämä oli suurimman TONNAASIN
+  // (kuorma × toistot) sarja, mikä on eri asia: kyykkysessiossa 177,5×1 · 167,5×2 ·
+  // 160×3 tonnaasivoittaja on 160 (480), joten ruudulla luki "viime kerta 160"
+  // vaikka atletti nosti 177,5. Kenttähavainto 12.8.2026 (O2); coach-judge mittasi
+  // vinouman systemaattiseksi: 108/108 tapauksessa narratiivi ALIARVIOI edellisen
+  // kerran, pahimmillaan 48 kg (näytti 43,5 kun raskain oli 91,5).
+  //
+  // Kuluttajat: "Miksi tämä paino? · viime kerta X", Progressio↑/Kalibrointi↓
+  // -badge ja edellisen session yhteenveto lukevat tätä "sinä nostit X kg"
+  // -merkityksessä — kenttänimi ja merkitys ovat nyt yhtenevät.
   const heaviest = sets.reduce((max, s) => {
-    const tonn = (s.externalLoadKg || 0) * (s.reps || 0);
-    const maxTonn = (max?.externalLoadKg || 0) * (max?.reps || 0);
-    return tonn > maxTonn ? s : max;
+    const l = s.externalLoadKg ?? -Infinity, ml = max?.externalLoadKg ?? -Infinity;
+    if (l > ml) return s;
+    if (l === ml && (s.reps ?? 0) > (max?.reps ?? 0)) return s; // tasatilanne → enemmän toistoja
+    return max;
   }, sets[0]);
+  // Trend-indikaattori tarvitsee ERI sarjan: kuormittavimman, ei raskaimman.
+  // effortScore = kuorma × toistot × intensiteettikerroin. Pidetään erillään
+  // jottei yhden kuluttajan tarve väännä `heaviest`-kentän merkitystä (juuri se
+  // sekaannus tuotti O2:n).
+  const topEffort = sets.reduce((max, s) =>
+    effortScore(s.externalLoadKg, s.reps, s.actualVx) > effortScore(max?.externalLoadKg, max?.reps, max?.actualVx) ? s : max,
+    sets[0]);
   // Tunnista yhdenmukainen kuorma (kaikki sets sama load) vs. vaihteleva
   const loads = sets.map(s => s.externalLoadKg);
   const uniformLoad = loads.every(l => l === loads[0]);
@@ -5864,6 +5882,7 @@ function computePriorSessionSummary(movementId, excludeSessionId) {
     setCount: sets.length,
     sets,
     heaviest,
+    topEffort,
     uniformLoad,
     avgLoad: loads.reduce((a,b) => a + b, 0) / loads.length,
   };
@@ -7001,11 +7020,10 @@ function renderActiveWorkout() {
           && priorSummary.heaviest.externalLoadKg !== null
           && targetReps !== null && targetReps !== undefined && targetReps !== "?") {
         const curEffort = effortScore(loadKg, targetReps, targetVx);
-        const priorEffort = effortScore(
-          priorSummary.heaviest.externalLoadKg,
-          priorSummary.heaviest.reps,
-          priorSummary.heaviest.actualVx
-        );
+        // v4.60.0: topEffort (kuormittavin sarja), ei heaviest (raskain kuorma).
+        // Trend vertaa TYÖMÄÄRÄÄ, joten vertailukohdan pitää olla kuormittavin sarja.
+        const _pe = priorSummary.topEffort || priorSummary.heaviest;
+        const priorEffort = effortScore(_pe.externalLoadKg, _pe.reps, _pe.actualVx);
         if (priorEffort > 0) {
           const ratio = curEffort / priorEffort;
           const pct = Math.round((ratio - 1) * 100);
@@ -7524,8 +7542,17 @@ function renderActiveWorkout() {
         // H-016 A6: jos engine preskriptoi paluurampin tälle liikkeelle (slot._reload
         // recommend()-slotista), banneri kertoo MISTÄ kevennetty luku tulee — manuaali-
         // kevennysohje (alla) näytetään vain jos reload EI kata (esim. ei top-ankkuria).
-        const _rl = (state.recommendation?.slots || []).find(s =>
-          s.role === "primary" && s._reload && s.defaultMovementName === exercise.name)?._reload;
+        // v4.60.0 (O1-korjaus): lookup luki `state.recommendation.slots`, jota EI OLE
+        // OLEMASSA — recommend() palauttaa slotit polussa `rec.dayPlan.slots`
+        // (engine.js). `(undefined || [])` teki ehdosta ikuisesti epätoden, joten tämä
+        // vihreä haara oli KUOLLUTTA KOODIA ja atletti näki aina alemman sinisen
+        // bannerin "Ehdotus ei kevene automaattisesti" — vaikka engine oli juuri
+        // keventänyt kuorman −15 %. Kenttähavainto 12.8.2026 (O1): kyykky 167,5 → 140,5.
+        // coach-judge vahvisti ajonaikaisesti: vihreä banneri renderöityi 0 kertaa / 379.
+        // Rooliehto poistettu: engine asettaa _reloadin myös ei-primary-sloteille
+        // (engine.js per-slot-silmukka), joten apuliikkeen paluuramppi jäi myös piiloon.
+        const _rl = (state.recommendation?.dayPlan?.slots || []).find(s =>
+          s._reload && (s.movementName || s.defaultMovementName) === exercise.name)?._reload;
         if (_rl) {
           return `<div style="background:rgba(34,197,94,0.10);border-left:3px solid var(--ok);padding:8px 10px;margin-top:6px;border-radius:6px;font-size:12px;line-height:1.45;color:var(--text)">
             ↩ <b>Paluuramppi käynnissä</b> — tauko ${_rl.breakDays} pv. ${_rl.phase === "first-return"
@@ -15728,24 +15755,24 @@ function bindWorkoutEvents() {
     }
 
     // Legacy path (non-slot exercises)
-    const sameCategory = state.movements.filter(m => m.category === exercise.category && m.name !== exercise.name);
-    const others = state.movements.filter(m => m.category !== exercise.category && m.name !== exercise.name);
-    const options = [...sameCategory, ...others];
-    const idx = await showListModal(
-      "Vaihda liike",
-      options.map(m => ({
-        icon: sameCategory.includes(m) ? "✅" : "🔹",
-        label: m.name,
-        desc: m.category,
-      }))
-    );
-    if (idx !== null && idx >= 0 && idx < options.length) {
-      exercise.name = options[idx].name;
-      exercise.movementId = options[idx].movementId;
-      exercise.category = options[idx].category;
+    // v4.60.0 (O8-korjaus): haullinen liikepankki lajittelemattoman listan tilalle.
+    // Ennen tämä oli showListModal jossa options = sameCategory + others = 145 riviä
+    // ilman hakua, suodatusta tai lajittelua. Kenttähavainto 12.8.2026: "selailen
+    // pitkään sekavaa pitkää listaa löytääkseni tietyn liikkeen".
+    // showMovementBankModal on ollut olemassa koko ajan (tekstihaku + kategoriachipit
+    // + autofocus) mutta sillä oli VAIN YKSI kutsuja (wizard) — kyse ei ollut
+    // rakennustyöstä vaan johdotuksesta.
+    // Paluuarvo on { name, category }, joten mapataan takaisin liikeobjektiin
+    // movementId:n vuoksi (kuorman re-resolvointi tarvitsee sen).
+    const picked = await showMovementBankModal(state.movements || [], new Set([exercise.name]));
+    if (picked) {
+      const chosenMov = (state.movements || []).find(m => m.name === picked.name);
+      exercise.name = picked.name;
+      exercise.movementId = chosenMov?.movementId ?? exercise.movementId;
+      exercise.category = chosenMov?.category ?? picked.category ?? exercise.category;
       // K1-E3 (OBS-C2): myös legacy-swap re-resolvoi kuorman uuden liikkeen datasta.
       const refSetL = (exercise.sets || []).find(s => !s.isWarmup && !s.completed) || (exercise.sets || []).find(s => !s.isWarmup);
-      const { load: legLoad } = await resolveSwapLoadKg(options[idx], refSetL, (exercise.sets || []).filter(s => !s.isWarmup).length);
+      const { load: legLoad } = await resolveSwapLoadKg(chosenMov || { name: picked.name, category: picked.category }, refSetL, (exercise.sets || []).filter(s => !s.isWarmup).length);
       applySwapLoad(exercise, legLoad);
       savePendingWorkoutLocal(state.workout);
       render();
