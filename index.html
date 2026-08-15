@@ -6787,8 +6787,21 @@ function renderActiveWorkout() {
   // v4.52.15 H-006b B1 (A1): liike-spesifi primer-rajaus. Akselin Cowork-päätös
   // 2026-05-28: tankoliikkeet + Lisäpainoleuanveto saavat primer-card UI:n;
   // Lisäpainodippi + Muscle-up EIVÄT (atletti-realismi — velocity epäluotettava).
-  const needsPrimer = !isWarmupSet &&
-    currentSetIdx === warmupCount &&     // juuri ennen ensimmäistä työsarjaa
+  // v4.62.0 (O7-korjaus): primer sijoittuu nyt ENNEN VIIMEISTÄ lämmittelysarjaa,
+  // ei sen jälkeen. Ennen ehto oli `currentSetIdx === warmupCount` = tasan rampin
+  // ja työsarjan väliin, jolloin järjestys oli:
+  //     ramppi ... ~90 % → primer 60 % e1RM × 3 → TYÖSARJA 100 %
+  // Kenttähavainto 12.8.2026 (O7): "117,5 primer kolmosesta heti ykkösiin
+  // 167,5 kilolla" = +42 % hyppy ilman väliaskelta. Primer on readiness-MITTAUS
+  // (60 % e1RM), ei lämmittelyn huippu — mutta viimeisenä ennen työsarjaa se
+  // toimi sellaisena ja rikkoi rampin.
+  // Nyt: ramppi ... → primer 60 % → rampin VIIMEINEN askel (~90 %) → työsarja.
+  // Mittausarvo säilyy (yksi kevyt single primerin jälkeen ei mitätöi
+  // readiness-lukemaa), mutta nousu työkuormaan on jälleen portaittainen.
+  // Jos ramppia ei ole (warmupCount 0), käytös on identtinen entiseen.
+  const _primerIdx = warmupCount > 0 ? warmupCount - 1 : 0;
+  const needsPrimer = (warmupCount > 0 ? isWarmupSet : !isWarmupSet) &&
+    currentSetIdx === _primerIdx &&
     exercise.role === "primary" &&
     !w.primer &&                         // primer ei vielä tehty eikä ohitettu
     primerEnabled &&
