@@ -28,7 +28,7 @@ const TIMEZONE = "Europe/Helsinki";
 // v4.52.35 (M2/OBS-022): sisä-blokki-intensifikaatio — primary reps+Vx-ramppi
 // vk2/3/5/7/9/11 (HANDOFF §4). Bump triggeröi auto-rebuildin → ramppi aktivoituu
 // olemassa olevissa asennuksissa ilman edistyksen menetystä.
-const PROGRAM_BUILD_VERSION = "4.58.0";
+const PROGRAM_BUILD_VERSION = "4.59.0";
 
 // ── Store names ──
 const STORES = {
@@ -7675,13 +7675,117 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
           competitionLift:true, isBarbell:true, attemptsPct:[0.90, 0.97, 1.03], allowVelocityInput:true },
       ]},
     ]},
+    { week:17, days:[
+      // ── v4.59.0: VIIKKO 17 — LAUANTAI-KISAVIIKKO ──────────────────────────
+      //
+      // MIKSI TÄMÄ VIIKKO ON OLEMASSA:
+      // Ohjelma ei ole ankkuroitu kisapäivään (streetliftingConfig.competitionDate
+      // on null) — viikot lasketaan pelkästä startDateISO:sta. Vk 16:n kisapäivä on
+      // SUNNUNTAI (dayOfWeek 7), mutta streetlifting- ja voimanostokisat ovat
+      // käytännössä lauantaisin. Jos atletin kisa osuu lauantaille, vk 16 huipentuu
+      // 1 pv liian aikaisin JA ohjelma loppuu (resolveMesocyclePosition palauttaa
+      // "after-end", engine.js) jättäen kisaa edeltävän viikon täysin tyhjäksi.
+      // Vk 17 antaa lauantai-kisalle oikean taper-viikon.
+      //
+      // KÄYTTÖ: atletti ohittaa vk 16:n sunnuntain kisapäivän ja jatkaa vk 17:ään.
+      // Vk 16 säilyy ennallaan (= sunnuntai-kisan normaalipolku muille).
+      //
+      // AJOITUS (kisa LA, dayOfWeek 6):
+      //   MA = T-5 · TI = T-4 · TO = T-2 · LA = T-0
+      // TO on 48 h kisasta. Vk 16:n oma kommentti (v4.25 P1-6) kertoo että T-3
+      // @88 % oli jo LIIAN kuormittava ja laskettiin 85 %:iin — 48 h päässä
+      // opener-rehearsalia EI tehdä lainkaan, vain liikemallin herätys @70 %.
+      //
+      // VOLYYMI: MA saa aitoa tukiliikevolyymiä, koska vk 16 on jo kaksi kevyttä
+      // viikkoa peräkkäin (T-6/T-5/T-3 = 11 työsarjaa). Kolmas peräkkäinen
+      // minimiviikko tuottaisi alitreenatun tunteen ilman palautumishyötyä.
+      // _noBlockScale: blokki 4:n accessory-skalaari (×0.50) ei saa puolittaa
+      // jo valmiiksi taperoitua viikkoa — sama peruste kuin vk 15:ssä (4.58.0).
+      { dayOfWeek:1, dayType:"heavy", label:"MA T-5 — Viimeinen kohtalainen",
+        warmup: [
+          { name: "Hyppynaru / Jumping Jacks", desc: "2 min yleislämmittely" },
+          { name: "Band pull-apart", desc: "1×12 — posterior delt" },
+          { name: "Band external rotation", desc: "1×10 per puoli — rotator cuff" },
+          { name: "Scapular hang", desc: "2×10 s — lapa-aktivaatio" },
+          { name: "Warmup ramp", desc: "50% × 3 · 65% × 2 · 72% × 1 → workset (@80%)" },
+        ],
+        slots:[
+        { role:"primary",   category:"vertikaaliveto", defaultMovementName:"Lisäpainoleuanveto",
+          sets:2, reps:1, targetVx:3, loadPct:0.80, suggestedLoadKg:seedL(0.80),
+          note:"@80% — viimeinen kohtalainen veto", allowVelocityInput:true },
+        { role:"secondary", category:"horisontaalityöntö", defaultMovementName:"Lisäpainodippi",
+          sets:2, reps:1, targetVx:3, loadPct:0.80, suggestedLoadKg:seedD(0.80),
+          note:"@80%", allowVelocityInput:true },
+        { role:"accessory", category:"horisontaaliveto", defaultMovementName:"Pendlay row",
+          sets:3, reps:6, targetVx:4, _noBlockScale:true, note:"Tukivolyymi — V4, ei grindiä" },
+        { role:"accessory", category:"horisontaalityöntö", defaultMovementName:"Close-grip bench",
+          sets:3, reps:6, targetVx:4, _noBlockScale:true, note:"Ojentajan tuki — V4" },
+      ]},
+      { dayOfWeek:2, dayType:"heavy", label:"TI T-4 — Kevyt kyykky",
+        warmup: [
+          { name: "Hyppynaru / Jumping Jacks", desc: "2 min kevyt" },
+          { name: "Hip 90/90 + Cossack", desc: "30 s per puoli — mobiliteetti" },
+          { name: "Empty bar squat", desc: "1×5 — liikemallin herätys" },
+          { name: "Warmup ramp", desc: "50% × 3 · 65% × 2 → workset (@78%)" },
+        ],
+        slots:[
+        { role:"primary", category:"alaraaja", defaultMovementName:"Takakyykky",
+          sets:2, reps:1, targetVx:4, loadPct:0.78, suggestedLoadKg:seedK(0.78), isBarbell:true,
+          note:"78 % openerista — viimeinen kyykky ennen kisaa", allowVelocityInput:true },
+        { role:"accessory", category:"alaraaja", defaultMovementName:"Jalkaprässi",
+          sets:3, reps:8, targetVx:4, _noBlockScale:true, note:"Quad-volyymi ilman selkä-CNS:ää" },
+        { role:"accessory", category:"core", defaultMovementName:"Hanging leg raise",
+          sets:3, reps:10, targetVx:3, _noBlockScale:true, note:"Vartalon jäykkyys" },
+      ]},
+      { dayOfWeek:4, dayType:"speed", label:"TO T-2 — Vain aktivointi (EI opener-rehearsalia)",
+        warmup: [
+          { name: "Hyppynaru / Jumping Jacks", desc: "2 min kevyt" },
+          { name: "Band dislocations", desc: "1×10 — olka-mobiliteetti" },
+          { name: "Scapular pull-up + push-up", desc: "1×5 kumpaakin — lapa-aktivaatio" },
+          { name: "BW-leuka + BW-dippi", desc: "1×3 kumpaakin — liikemallien primer" },
+        ],
+        slots:[
+        // 48 h kisasta: liikemallin herätys, EI voimatestaus. Ks. vk 16 v4.25 P1-6.
+        { role:"primary",   category:"vertikaaliveto", defaultMovementName:"Lisäpainoleuanveto",
+          sets:1, reps:1, targetVx:4, loadPct:0.70, suggestedLoadKg:seedL(0.70),
+          note:"@70% — pelkkä herätys, CNS säästöön" },
+        { role:"accessory", category:"horisontaalityöntö", defaultMovementName:"Lisäpainodippi",
+          sets:1, reps:1, targetVx:4, loadPct:0.70, suggestedLoadKg:seedD(0.70), note:"@70% herätys" },
+        ...finisherMinimal("kisa-aktivointi"),
+      ]},
+      { dayOfWeek:6, dayType:"competition", label:"LA T-0 — KISA 🏆",
+        warmup: [
+          { name: "Hyppynaru / Jumping Jacks", desc: "3 min perusteellinen — kisalämpö" },
+          { name: "Band pull-apart + dislocations", desc: "1×15 kumpaakin — olkapäät ja lavat" },
+          { name: "Hip 90/90 + Cossack", desc: "30 s per puoli — lonkat kisakyykkyyn" },
+          { name: "Scapular pull-up / push-up", desc: "1×5 kumpaakin — lapa-aktivaatio" },
+          { name: "Dynaaminen priming", desc: "BW-leuka 1×3 räjähtävä + BW-dippi 1×3 — CNS-primer" },
+          { name: "Liikekohtainen ramp", desc: "Jokaisen liikkeen ramp erikseen: MU bändi → BW → +5, Leuka 50→65→80%, Dippi 50→65→80%, Kyykky 40→60→75→85% — kisaproto" },
+        ],
+        slots:[
+        { role:"primary",   category:"vertikaaliveto",   defaultMovementName:"Muscle-up",
+          sets:3, reps:1, targetVx:null, suggestedLoadKg:5, note:"1. Muscle-up — Opener +5 · 2nd +10 · 3rd +15 kg", competitionLift:true },
+        { role:"secondary", category:"vertikaaliveto",   defaultMovementName:"Lisäpainoleuanveto",
+          sets:3, reps:1, targetVx:null, loadPct:0.88, suggestedLoadKg:seedL(0.88),
+          note:"2. Leuanveto — Opener 88% · 2nd 96% · 3rd 102%",
+          competitionLift:true, attemptsPct:[0.88, 0.96, 1.02], allowVelocityInput:true },
+        { role:"backoff",   category:"horisontaalityöntö", defaultMovementName:"Lisäpainodippi",
+          sets:3, reps:1, targetVx:null, loadPct:0.88, suggestedLoadKg:seedD(0.88),
+          note:"3. Dippi — Opener 88% · 2nd 96% · 3rd 102%",
+          competitionLift:true, attemptsPct:[0.88, 0.96, 1.02], allowVelocityInput:true },
+        { role:"accessory", category:"alaraaja",         defaultMovementName:"Takakyykky",
+          sets:3, reps:1, targetVx:null, loadPct:0.90, suggestedLoadKg:seedK(0.90),
+          note:"4. Kyykky — Opener 90% · 2nd 97% · 3rd 103%",
+          competitionLift:true, isBarbell:true, attemptsPct:[0.90, 0.97, 1.03], allowVelocityInput:true },
+      ]},
+    ]},
   ];
 
   return {
     mesocycleId: uid(),
     type: "streetlifting_16w",
     startDateISO: startDateISO || todayISO(),
-    weekCount: 16,
+    weekCount: 17,
     streetliftingConfig: {
       calibration: { leukaExtKg: L, dippiExtKg: D, kyykkyExtKg: K, bwKg: BW },
       competitionDate: null,
