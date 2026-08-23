@@ -277,6 +277,78 @@ function testH021E1RMEvidenceFilter() {
     `puhdas=${onlyHeavy} back-offilla=${withBackoff}`);
 }
 
+// ═══════════════════════════════════════════════════════════════
+// H-023 — suunnitelma on katto, ei lattia (2026-08-23)
+// ═══════════════════════════════════════════════════════════════
+// computeProgressionTarget laski `Math.max(planTarget, autoregTarget)` ja sen
+// oma kommentti sanoi päätöksen ääneen: "lattia, autoregulaatio voi vain
+// nostaa". Mitattu seuraus atleetin omalla historialla: uuden blokin viikko 1
+// tarjosi kaikille kolmelle kisalajille 17–32 % yli suunnitellun (leuka
+// 47,5 → 62,5 kg = ~4 toistoa failureen, kun pyydettiin 6 toistoa V3:lla).
+function testH023PlanIsCeiling() {
+  const base = {
+    lastSession: { medianLoad: 100, medianVx: 2, isCalibration: false, dateISO: "2026-01-01" },
+    targetVx: 2, dayType: "heavy", cfgBaseline: null, dateISO: "2026-01-08",
+  };
+
+  // ── KNOWN-POSITIVE: autoreg haluaisi nostaa reilusti yli suunnitelman ──
+  // Matala planTarget + regain-kelpoinen cfgBaseline → autoreg > plan.
+  const hot = computeProgressionTarget({
+    ...base, weekDef: { deltaPctBase: 0.05 }, planTarget: 50,
+    cfgBaseline: 200, // lastLoad 100 / 200 = 0,5 → REGAIN_FAR ×2
+  });
+  assert(hot.targetLoad !== null && hot.targetLoad <= 50 * 1.02 + 0.001,
+    "H-023 known-positive: progressio ei ylitä suunnitelmaa yli 2 %:n",
+    `planTarget=50 → targetLoad=${hot.targetLoad} (autoreg ${hot.decisionTrace.autoregTarget?.toFixed(1)})`);
+  assert(hot.decisionTrace.ruleHits.includes("PLAN_PCT_BINDS_PROGRESSION"),
+    "H-023 A2: ohitus ei ole hiljainen — PLAN_PCT_BINDS_PROGRESSION ruleHits:issä",
+    "ruleHits=" + hot.decisionTrace.ruleHits.join("+"));
+  assert(typeof hot.decisionTrace.suppressedTarget === "number"
+      && hot.decisionTrace.suppressedTarget > hot.targetLoad,
+    "H-023 A2: trace kantaa ohitetun arvon (suppressedTarget)",
+    "suppressedTarget=" + hot.decisionTrace.suppressedTarget);
+
+  // ── KNOWN-NEGATIVE 1: progressio saa yhä KEVENTÄÄ suunnitelmasta ──
+  // Katto on katto, ei lukko. Korkea planTarget + matala autoreg → autoreg voittaa.
+  const cool = computeProgressionTarget({
+    ...base, weekDef: { deltaPctBase: 0.05 }, planTarget: 300,
+  });
+  assert(cool.targetLoad !== null && cool.targetLoad < 300,
+    "H-023 known-negative: katto ei estä keventämistä suunnitelman alle",
+    "targetLoad=" + cool.targetLoad);
+  assert(!cool.decisionTrace.ruleHits.includes("PLAN_PCT_BINDS_PROGRESSION"),
+    "H-023 known-negative: kattoa ei merkitä kun se ei sitonut",
+    "ruleHits=" + cool.decisionTrace.ruleHits.join("+"));
+
+  // ── KNOWN-NEGATIVE 2: deload-passthrough ennallaan ──
+  const dl = computeProgressionTarget({
+    ...base, weekDef: { deltaPctBase: -0.25 }, planTarget: 50, cfgBaseline: 200,
+  });
+  assertEqual(dl.targetLoad, 50,
+    "H-023 known-negative: kevennysviikko palauttaa plan-targetin muuttumattomana");
+  assert(dl.decisionTrace.ruleHits.includes("PROGRESSION_DELOAD_PASSTHROUGH"),
+    "H-023 known-negative: deload-passthrough säilyy");
+
+  // ── KNOWN-NEGATIVE 3: ilman plan-targetia ei kattoa (null-polku ennallaan) ──
+  const noPlan = computeProgressionTarget({
+    ...base, weekDef: { deltaPctBase: 0.05 }, planTarget: null,
+  });
+  assertEqual(noPlan.targetLoad, null,
+    "H-023 known-negative: planTarget null → null (kutsujan fallback ennallaan)");
+
+  // ── KNOWN-NEGATIVE 4: FLOOR_CAP ei saa karata katon yli ──
+  // Viim. sessio 100 kg target-Vx:llä, suunnitelma 60 → regression-suoja
+  // yrittäisi nostaa 100:aan, katto pitää 61:ssä.
+  const floorEscape = computeProgressionTarget({
+    ...base, weekDef: { deltaPctBase: 0.05 }, planTarget: 60,
+    lastSession: { medianLoad: 100, medianVx: 4, isCalibration: false, dateISO: "2026-01-01" },
+    targetVx: 2,
+  });
+  assert(floorEscape.targetLoad !== null && floorEscape.targetLoad <= 60 * 1.02 + 0.001,
+    "H-023 known-negative: FLOOR_CAP ei karkaa katon yli",
+    `targetLoad=${floorEscape.targetLoad} (ruleHits ${floorEscape.decisionTrace.ruleHits.join("+")})`);
+}
+
 function testMath() {
   // median + MAD
   const arr = [10, 12, 11, 13, 14, 10, 11, 12, 13, 11];
@@ -2128,8 +2200,13 @@ async function testRecommendScenarios() {
       sessions, allSets });
     const rec = await recommend(ctx);
     assert(!rec.error, 'K62b: ei error');
-    assert(hasTrace(rec, 'ANCHOR_DELOAD_SKIP'),
-      'K62b: ANCHOR_DELOAD_SKIP-trace — deload-sarjat ohitettu ankkurivalinnassa');
+    // H-023 (2026-08-23): poissulku siirtyi AIEMMAKSI putkessa. Ennen se tehtiin
+    // vasta ankkurivalinnassa (ANCHOR_DELOAD_SKIP); nyt kevennyssarjat suodatetaan
+    // jo e1RM-ikkunasta (E1RM_DELOAD_SKIP), koska suunnitelma on katto ja e1RM:n
+    // oikeellisuus on siksi kantava. Invariantti on sama — sarjat eivät ankkuroi —
+    // joten testi hyväksyy kumman tahansa tracen ja tarkistaa ankkurin erikseen alla.
+    assert(hasTrace(rec, 'E1RM_DELOAD_SKIP') || hasTrace(rec, 'ANCHOR_DELOAD_SKIP'),
+      'K62b: kevennyssarjat ohitettu evidenssistä (E1RM_DELOAD_SKIP tai ANCHOR_DELOAD_SKIP)');
     const prog = rec.traces.find(t => t.ruleId === 'PROGRESSION_TARGET');
     assert(prog && prog.after?.lastLoad === 70,
       `K62b: ankkuri = viimeinen NORMAALI sessio (70 kg), ei deload (50) — got ${prog?.after?.lastLoad}`);
@@ -5249,6 +5326,8 @@ export async function runTests() {
   testSetPersistenceContract();
   // H-021 (OBS-058): e1RM-evidenssisuodatin — kevyt sarja ei paina arviota
   testH021E1RMEvidenceFilter();
+  // H-023: suunnitelma on katto — progressio ei nosta yli suunnitellun
+  testH023PlanIsCeiling();
   testMath();
   testZClassification();
   testReadiness23Rule();
@@ -5667,8 +5746,12 @@ function testComputeProgressionTarget() {
       planBasedActive: false,
       dateISO: '2026-05-04',
     });
-    assertClose(result.targetLoad, 126, 0.5,
-      'E1 regain-vaihe: 120 V4 → 126 kg V4 (regain ratio 0.65 < 0.85, ×2.0)');
+    // H-023 (2026-08-23): suunnitelma on KATTO, ei lattia. Autoreg-aritmetiikka
+    // assertoidaan yhä sellaisenaan; lopullinen target rajautuu plan-kattoon.
+    assertClose(result.decisionTrace.autoregTarget, 126, 0.5,
+      'E1 regain-vaihe: autoreg 120 V4 → 126 kg (regain ratio 0.65 < 0.85, ×2.0)');
+    assertClose(result.targetLoad, 104, 0.01,
+      'E1 H-023: plan-katto sitoo (102 × 1,02 = 104 kg)');
     assert(result.decisionTrace.ruleHits.includes('PROGRESSION_REGAIN_FAR'),
       'E1: REGAIN_FAR-flag aktivoituu');
     assertEqual(result.decisionTrace.regainMultiplier, 2.0,
@@ -5695,8 +5778,10 @@ function testComputeProgressionTarget() {
       planBasedActive: false,
       dateISO: '2026-05-04',
     });
-    assertClose(result.targetLoad, 184.5, 0.5,
-      'E2 PR-vaihe: 180 V3 → 184.5 kg V3 (regain ratio 0.97 ≥ 0.95, ×1.0)');
+    assertClose(result.decisionTrace.autoregTarget, 184.5, 0.5,
+      'E2 PR-vaihe: autoreg 180 V3 → 184.5 kg (regain ratio 0.97 ≥ 0.95, ×1.0)');
+    assertClose(result.targetLoad, 160, 0.01,
+      'E2 H-023: plan-katto sitoo (157,25 × 1,02 = 160 kg)');
     assertEqual(result.decisionTrace.regainMultiplier, 1.0,
       'E2: regain_multiplier = 1.0 (PR-vaihe)');
     assert(!result.decisionTrace.ruleHits.includes('PROGRESSION_REGAIN_FAR')
@@ -5820,8 +5905,10 @@ function testComputeProgressionTarget() {
       planBasedActive: false,
       dateISO: '2026-05-04',
     });
-    assertClose(result.targetLoad, 191.7, 0.5,
-      'E8 Helms Vx-adj: 180 V5 → V3 → 191.7 kg (vxAdj 4% + weekly 2.5%)');
+    assertClose(result.decisionTrace.autoregTarget, 191.7, 0.5,
+      'E8 Helms Vx-adj: autoreg 180 V5 → V3 → 191.7 kg (vxAdj 4% + weekly 2.5%)');
+    assertClose(result.targetLoad, 160, 0.01,
+      'E8 H-023: plan-katto sitoo (157,25 × 1,02 = 160 kg)');
     assertClose(result.decisionTrace.vxAdjustmentPct, 0.04, 0.001,
       'E8: vxAdjustmentPct = 4% (vxDiff 2 × 0.02)');
   }
@@ -5865,8 +5952,10 @@ function testComputeProgressionTarget() {
       planBasedActive: false,
       dateISO: '2026-01-19',
     });
-    assertClose(result.targetLoad, 132, 0.5,
-      'E10 multi-week: 14 pv väli → weeksSinceLast=2 → 132 kg');
+    assertClose(result.decisionTrace.autoregTarget, 132, 0.5,
+      'E10 multi-week: autoreg 14 pv väli → weeksSinceLast=2 → 132 kg');
+    assertClose(result.targetLoad, 104, 0.01,
+      'E10 H-023: plan-katto sitoo (102 × 1,02 = 104 kg)');
     assertEqual(result.decisionTrace.weeksSinceLast, 2,
       'E10: weeksSinceLast = 2');
   }
@@ -5886,8 +5975,10 @@ function testComputeProgressionTarget() {
       planBasedActive: false,
       dateISO: '2026-05-04',
     });
-    assertClose(result.targetLoad, 180.5, 0.5,
-      'E11 REGAIN_NEAR: ratio 0.94 → ×1.5 → 180.5 kg');
+    assertClose(result.decisionTrace.autoregTarget, 180.5, 0.5,
+      'E11 REGAIN_NEAR: autoreg ratio 0.94 → ×1.5 → 180.5 kg');
+    assertClose(result.targetLoad, 160, 0.01,
+      'E11 H-023: plan-katto sitoo (157,25 × 1,02 = 160 kg)');
     assertEqual(result.decisionTrace.regainMultiplier, 1.5,
       'E11: regain_multiplier = 1.5');
     assert(result.decisionTrace.ruleHits.includes('PROGRESSION_REGAIN_NEAR'),
@@ -5928,8 +6019,10 @@ function testComputeProgressionTarget() {
       dateISO: '2026-05-04',
     });
     // Autoreg: vxAdj 12% + weekly 5% = 17% → 117. Hard-cap 115. Cap rajaa → 115.
-    assertClose(result.targetLoad, 115, 0.5,
+    assertClose(result.decisionTrace.hardCap, 115, 0.5,
       'E12 hard-cap: autoreg 117 → hard-cap 115 kg rajaa');
+    assertClose(result.targetLoad, 102, 0.01,
+      'E12 H-023: plan-katto sitoo hard-capin alle (100 × 1,02 = 102 kg)');
     assert(result.decisionTrace.ruleHits.includes('PROGRESSION_HARD_CAP'),
       'E12: HARD_CAP-flag aktivoituu');
   }

@@ -50,13 +50,66 @@ Mitattu 23.8. (`createStreetlifting16WMesocycle` 4.65.0 vs. KoW:n ruutukaappauks
 
 ---
 
-# (uusi handoff tähän)
+# H-023 — Suunnitelma on katto, ei lattia
 
 ## 0. Metadata
+
+| Kenttä | Arvo |
+| --- | --- |
+| Handoff-id | **H-023** |
+| Tyyppi | `debug` (käytös muuttuu TARKOITUKSELLA rajatussa joukossa → regressio-odotus deklaroitu A3:ssa) |
+| Laadittu | 23.8.2026, Akselin kenttähavainnosta + toistetusta juurianalyysistä |
+| Pohja-HEAD | `2eea87e` · peruutusankkuri `backup-pre-H-023-2eea87e` |
+| Edeltäjä | H-022 (sama sääntö, kaksi polkua) · H-021 (e1RM-arvio) |
+
 ## 1. Tavoite
+
+`computeProgressionTarget` laskee lopputuloksen muodossa `Math.max(planFloor, autoregTarget)`. Muuttujan nimi kertoo suunnittelupäätöksen: **suunnitelma on lattia.** Kuorma ei saa mennä sen alle, mutta saa mennä rajattomasti sen yli.
+
+Tämä käännetään: **suunnitelma on katto.** Mikään progressiokerros ei nosta yli suunnitellun tason (± 2 % toleranssi). Kevennys alaspäin säilyy ennallaan — kaikki nykyiset capit ja suojat toimivat kuten ennenkin.
+
 ## 2. Acceptance criteria
+
+**A1** — `computeProgressionTarget` ei koskaan palauta arvoa > `planTarget × 1,02`, kun `planTarget` on numero. Katto pyöristetään ALAS puolikkaaseen kiloon (sama kuin H-022 A2).
+
+**A2** — Ylitys ei ole hiljainen: uusi ruleId `PLAN_PCT_BINDS_PROGRESSION` nimeää ohituksen ja kantaa `planTarget`, `suppressedTarget` ja `ruleHits`.
+
+**A3** — LOAD-DIFF Akselin omalla historialla, tuore ohjelma, 48 päivää. **Odotus deklaroitu:** viisi ylitystä nollaan. Mitattu ennen (plan → annettu):
+
+| | ohjelma | ennen | ylitys |
+| --- | --- | --- | --- |
+| vk 1 MA Lisäpainoleuanveto 6×V3 | 47,5 kg | 62,5 kg | +32 % |
+| vk 1 TO Lisäpainodippi 6×V3 | 52 kg | 64 kg | +23 % |
+| vk 1 TI Takakyykky 6×V3 | 141 kg | 165 kg | +17 % |
+| vk 2 TO Lisäpainodippi 6×V2 | 55,5 kg | 60 kg | +8 % |
+| vk 2 MA Lisäpainoleuanveto 6×V2 | 51,5 kg | 53 kg | +3 % |
+
+Muut rivit: **0 odottamatonta muutosta**, jokainen diff luokiteltu.
+
+**A4** — Lukkotesti known-positive + known-negatiivisilla, todennettu korjaamattomalla koodilla ennen luottamusta (Selkäranka 6). Known-negatiivit: deload-passthrough ennallaan · `planTarget === null` ennallaan · progressio saa yhä KEVENTÄÄ suunnitelmasta.
+
+**A5** — Neljä porttia vihreänä.
+
 ## 3. Reunaehdot ja scope-aita
+
+**Sallittu diff (funktionimin):** `engine.js` — `computeProgressionTarget`-funktion palautusarvo · `test-runner.js` — lukkotesti · `tools/coach-judge/a2-plan-floor-sweep.mjs` — Haara P -mittari · `sw.js` APP_VERSION · tämä tiedosto. **STOP jos diff ylittää valkolistan.**
+
+**EI kosketa tässä kierroksessa:** 46 kuormasäännön karsinta · `SUSTAINABILITY_CAP`/`HARD_CAP`/`INFLATION_CAP` -logiikat (ne jäävät, ne voivat vain keventää) · `computeMovementReload`-ankkurin rep-sokeus (kirjattu havainnoksi, min-precedence suojaa toistaiseksi) · ohjelman volyymi/RPE-viritys (eri päätös, Akselin) · treeninäkymän hierarkia · lämmittelyjen määrä.
+
+**Invariantit (CLAUDE.md §2):** ei kosketa VL-cappeihin, deload-syvyyteen eikä prioreihin. Elite-progressio ≤ 0,05 ×/vk säilyy — katto vain estää sen ylittämisen suunnitelman yli.
+
 ## 4. Atletti-vastaukset
+
+Ei sovellu (`debug`). Ratifioitu kenttähavainnosta 23.8.: *"Koskaan, siis koskaan ei saa jatkossa tulla tällaisia heittoja."*
+
 ## 5. Taustapäätökset
+
+- **Miksi katto eikä sääntöjen karsinta:** engine sisältää 46 kuormaan vaikuttavaa sääntöä. Katto tekee niistä vaarattomia poistamatta yhtäkään — ne voivat vain keventää. Pienempi muutos, pienempi riski.
+- **Miksi juuri `computeProgressionTarget`:** juurianalyysi 23.8. osoitti sen sitovaksi vaiheeksi (`planFloor` → `Math.max`). `SUSTAINABILITY_CAP` capasi jo alaspäin mutta "demonstroituun", ei suunnitelmaan.
+- **Todiste että ohjelma on oikeassa:** suunniteltu taso vk 1 leuka = 47,5 kg. KoW:n vastaava preskriptio samalle intensiteettivyöhykkeelle (9 vs 9,5 efektiivistä toistoa) = 46,25 kg. Ero 2,7 %. Annettu 62,5 kg edellyttäisi 110 kg:n maksimia; kisamaksimi on 84.
+
 ## 6. Avoimet kysymykset
-## 7. Session-tulos
+
+1. **Ohjelman viritys** (volyymi 95 vs 63 sarjaa/vk, kisalajin RPE 7 vs 5,5) — eri päätös, ei tässä.
+2. **`computeMovementReload` on rep-sokea** (`anchorKg = medianLoad`, ei toistoja/Vx:ää). Min-precedence suojaa nyt, mutta suoja on sattumaa. Oma kierros.
+

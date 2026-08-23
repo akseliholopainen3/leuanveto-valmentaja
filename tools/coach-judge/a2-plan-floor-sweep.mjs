@@ -83,7 +83,7 @@ const iso = (dayIndex) => {
 };
 
 const allSets = [], sessions = [];
-const branchA = [], crossRef = [], crossRefFinal = [], loads = [];
+const branchA = [], crossRef = [], crossRefFinal = [], loads = [], primaryTarget = [];
 
 const dumpArg = process.argv.find(a => a.startsWith("--dump="));
 const dumpKey = dumpArg
@@ -154,6 +154,31 @@ for (const wp of meso.weekPlans) {
         pctDiff: typeof a.planLoadKg === "number" && a.planLoadKg > 0
           ? ((a.resolvedLoadKg - a.planLoadKg) / a.planLoadKg) * 100 : null,
       });
+    }
+
+    // ── HAARA P: PÄÄLIIKKEEN TARGET (kolmas lokus, jota H-022 A1 ei mitannut).
+    // Atleetille näkyvä pääliikkeen kuorma on targetExternalLoad, ei slot-resoluutio.
+    // Se syntyy computeProgressionTarget → SUSTAINABILITY_CAP -polkua pitkin, eikä
+    // A2 (cross-ref) tai A3 (same-liike-slotti) kosketa sitä.
+    //   plan-taso = PROGRESSION_TARGET.after.planFloor  (suunniteltu kuorma ennen progressiota)
+    //   toteutunut = TARGET_LOAD.after.targetExternalLoad (lopullinen, kaikkien kerrosten jälkeen)
+    {
+      const pt = traces.find(t => t.ruleId === "PROGRESSION_TARGET");
+      const tl = traces.find(t => t.ruleId === "TARGET_LOAD");
+      const sc = traces.find(t => t.ruleId === "SUSTAINABILITY_CAP");
+      const planKg = typeof pt?.after?.planFloor === "number" ? pt.after.planFloor
+        : (typeof sc?.after?.planTarget === "number" ? sc.after.planTarget : null);
+      const gotKg = tl?.after?.targetExternalLoad;
+      if (typeof planKg === "number" && planKg > 0 && typeof gotKg === "number") {
+        primaryTarget.push({
+          wk: wp.week, dow: day.dayOfWeek, deload: dl,
+          mov: primary?.defaultMovementName ?? null,
+          reps: tl?.after?.targetReps ?? null, vx: tl?.after?.targetVx ?? null,
+          planKg, gotKg, pctDiff: ((gotKg - planKg) / planKg) * 100,
+          ruleHits: (pt?.after?.ruleHits || []).join("+"),
+          capped: !!sc,
+        });
+      }
     }
 
     // ── LOAD-DIFF-dumppi: jokaisen slotin lopullinen kuorma (§9.4)
@@ -241,9 +266,24 @@ if (crossRefFinal.every(r => r.planKg == null)) {
   console.log(`  sitova lähde: ${Object.entries(bySrc).map(([k, v]) => `${k} ${v}`).join(" · ")}`);
 }
 
+
+// ── HAARA P: PÄÄLIIKKEEN TARGET
+const pOver = primaryTarget.filter(r => r.pctDiff > TOL_PCT);
+console.log(`\nHAARA P (pääliikkeen targetExternalLoad): ${primaryTarget.length} päivää, yli plan-tason > ${TOL_PCT} %: ${pOver.length}`);
+for (const r of pOver.slice().sort((a, b) => b.pctDiff - a.pctDiff)) {
+  console.log(`  vk ${String(r.wk).padStart(2)} pv ${r.dow} ${r.deload ? "KEVENNYS " : "työviikko"} | ${String(r.mov).padEnd(20)} ${r.reps}×V${r.vx} | plan ${r.planKg} kg → ${r.gotKg} kg (+${r.pctDiff.toFixed(0)} %) | ${r.ruleHits || "—"}${r.capped ? " [cap]" : ""}`);
+}
+{
+  const worst = pOver.slice().sort((a, b) => b.pctDiff - a.pctDiff)[0];
+  const dl = pOver.filter(r => r.deload).length;
+  console.log(`  → kevennysviikoilla ${dl} · työviikoilla ${pOver.length - dl}` + (worst ? ` · pahin +${worst.pctDiff.toFixed(0)} %` : ""));
+  const hits={}; for(const r of pOver) for(const h of r.ruleHits.split('+')) if(h) hits[h]=(hits[h]||0)+1;
+  console.log('  sääntöosumat ylityksissä:', Object.entries(hits).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+' '+v).join(' · ')||'—');
+}
+
 const jsonArg = process.argv.find(a => a.startsWith("--json="));
 if (jsonArg) {
-  const out = { branchA, crossRef, crossRefFinal, loads,
+  const out = { branchA, crossRef, crossRefFinal, loads, primaryTarget,
     deloadWeeks: [...deltaByWeek].filter(([, d]) => d < 0).map(([w]) => w) };
   writeFileSync(jsonArg.slice(7), JSON.stringify(out, null, 1));
   console.log(`\nJSON → ${jsonArg.slice(7)}`);

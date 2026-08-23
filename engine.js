@@ -3070,6 +3070,36 @@ function computeProgressionTarget(ctx) {
     trace.ruleHits.push('PROGRESSION_FLOOR_CAP');
   }
 
+  // 10b. H-023 (2026-08-23): SUUNNITELMA ON KATTO, EI LATTIA.
+  //
+  // Kohta 9 yllä on `Math.max(planTarget, autoregTarget)` ja sen oma kommentti
+  // sanoo päätöksen ääneen: "lattia, autoregulaatio voi vain nostaa". Mitattu
+  // seuraus (atleetin oma historia, tuore ohjelma, 48 päivää): uuden blokin
+  // viikko 1 tarjosi KAIKILLE kolmelle kisalajille 17–32 % yli suunnitellun.
+  // Lisäpainoleuka 47,5 → 62,5 kg. 62,5 kg kuudelle toistolle V3:lla edellyttää
+  // 110 kg:n maksimia; atleetin kisamaksimi on 84. Sarja ei siis ollut raskas
+  // vaan SUORITTAMATON (~4 toistoa failureen) — ja epäonnistuminen olisi
+  // painanut e1RM-arvion alas, mistä seuraa seuraava ylikorjaus. Kohinasilmukka
+  // käynnistyy blokin ensimmäisestä sarjasta.
+  //
+  // Katto EI poista yhtään sääntöä. Hard-cap, floor-cap, regain, Vx-säätö ja
+  // kaikki kutsujan myöhemmät capit toimivat ennallaan — ne voivat vain
+  // KEVENTÄÄ. Sama sääntö kuin H-022 A2 cross-ref-polulla, laajennettuna
+  // pääliikkeen targetiin: kolmas ja viimeinen sitova lokus.
+  //
+  // Sijainti on tarkoituksellisesti KAIKKIEN muiden vaiheiden jälkeen (ml.
+  // FLOOR_CAP, joka voi itsekin nostaa suunnitelman yli) — mikään ei karkaa.
+  // Pyöristys ALAS puolikkaaseen kiloon, ettei katto itse ylitä toleranssia.
+  if (typeof planTarget === "number" && planTarget > 0) {
+    const planCeiling = Math.floor(planTarget * (1 + PLAN_PCT_TOLERANCE) * 2) / 2;
+    if (finalTarget > planCeiling) {
+      trace.suppressedTarget = finalTarget;
+      trace.planCeiling = planCeiling;
+      trace.ruleHits.push('PLAN_PCT_BINDS_PROGRESSION');
+      finalTarget = planCeiling;
+    }
+  }
+
   trace.finalTarget = finalTarget;
 
   // 11. Rationale
@@ -4976,13 +5006,52 @@ async function recommend(options = {}) {
     })
     .sort(_evidenceSort);
 
+  // H-023 (2026-08-23): KEVENNYSVIIKON SARJA EI OLE KAPASITEETTIEVIDENSSIÄ.
+  //
+  // Sääntö on repossa jo kahdesti — ANCHOR_DELOAD_SKIP (progressioankkuri) ja
+  // 8a-orkestrointi — molemmat kriteerillä deltaPctBase ≤ −0,10 (K6-2b-presedentti).
+  // e1RM-ikkunasta se puuttui, ja niin kauan kuin suunnitelma oli LATTIA se ei
+  // näkynyt: autoregulaatio pakeni saastuneen suunnitelman yli ja päätyi sattumalta
+  // oikeaan lukuun. Kun suunnitelmasta tuli KATTO (kohta 10b), e1RM:n oikeellisuus
+  // muuttui kantavaksi rakenteeksi ja vika tuli näkyviin — K6-2b-lukkotesti nappasi
+  // sen: 70 kg × 3 @ V2 antaa e1RM 96,8 kg, mutta saman ikkunan kevennyssarjat
+  // (50 kg × 3 @ V4) vetivät mediaanin 74,9:ään → suunnitelma 49,5 kg.
+  //
+  // Tunnistus setin OMASTA päivämäärästä; sessionId vain fallback-lookupina, koska
+  // settien sessionId voi olla null (pilot-simulaattori, importoitu data).
+  // Kalibrointisetit ovat AINA evidenssiä — ne tehdään tarkoituksella juuri
+  // kevennysviikolla (v4.27.15).
+  const _deloadDateMemo = {};
+  const isDeloadEvidenceSet = (s) => {
+    const d = s.dateISO || (s.timestamp || "").slice(0, 10)
+      || (s.sessionId ? (sessions.find(x => x && x.sessionId === s.sessionId)?.dateISO ?? null) : null);
+    if (!d) return false;
+    if (_deloadDateMemo[d] === undefined) {
+      const wk2 = getMesocycleWeek(mesocycle, d);
+      const def2 = (wk2 != null) ? mesocycle?.weekDefs?.[wk2 - 1] : null;
+      _deloadDateMemo[d] = !!(def2 && typeof def2.deltaPctBase === "number" && def2.deltaPctBase <= -0.10);
+    }
+    return _deloadDateMemo[d];
+  };
+  // Fallback: jos KAIKKI evidenssi on kevennysviikoilta, käytetään sitä — parempi
+  // kuin ei mitään (sama periaate kuin ANCHOR_DELOAD_SKIP:issä).
+  const _e1rmEvidence = topSets.filter(s => s.setRole === "calibration" || !isDeloadEvidenceSet(s));
+  const _e1rmSkipped = topSets.length - _e1rmEvidence.length;
+  const topSetsForE1RM = _e1rmEvidence.length ? _e1rmEvidence : topSets;
+  if (_e1rmSkipped > 0 && _e1rmEvidence.length) {
+    trace("E1RM_DELOAD_SKIP",
+      { fromSets: topSets.length },
+      { fromSets: _e1rmEvidence.length, skipped: _e1rmSkipped },
+      `e1RM-ikkuna ohittaa ${_e1rmSkipped} kevennysviikon sarjaa (suunniteltu kevennys ≠ kapasiteettievidenssi) — kalibrointisarjat säilyvät`);
+  }
+
   // e1RM from last 4-6 top sets
   // Barbell lifts (squat): external-load-only formula. CKC lifts: system load (BW + ext).
   // K3-1: sarjapositio-krediitti — väsyneenä tehty myöhempi sarja todistaa korkeamman tuoreen
   // kapasiteetin. Krediitit lasketaan TÄYDESTÄ topSets-järjestyksestä (positio ei ala keskeltä
   // sessiota slice-ikkunan takia).
-  const _fatigueCreditsAll = withinSessionFatigueCredits(topSets, acrossSetRate);
-  const recentTopSets = topSets.slice(-6);
+  const _fatigueCreditsAll = withinSessionFatigueCredits(topSetsForE1RM, acrossSetRate);
+  const recentTopSets = topSetsForE1RM.slice(-6);
   const _recentCredits = _fatigueCreditsAll.slice(-6);
   const e1rmValues = recentTopSets
     .map((s, i) => {
@@ -5776,20 +5845,14 @@ async function recommend(options = {}) {
       // Tunnistus setin OMASTA päivämäärästä (timestamp/dateISO) — sessionId vain
       // fallback-lookupina. Peruste: settien sessionId voi olla null (mm. pilot-
       // simulaattori, importoitu data) eikä ankkurisuoja saa riippua siitä.
-      const _deloadDateMemo = {};
-      const _isDeloadSet = (s) => {
-        const d = s.dateISO || (s.timestamp || "").slice(0, 10)
-          || (s.sessionId ? (sessions.find(x => x && x.sessionId === s.sessionId)?.dateISO ?? null) : null);
-        if (!d) return false;
-        if (_deloadDateMemo[d] === undefined) {
-          const wk2 = getMesocycleWeek(mesocycle, d);
-          const def2 = (wk2 != null) ? mesocycle?.weekDefs?.[wk2 - 1] : null;
-          _deloadDateMemo[d] = !!(def2 && typeof def2.deltaPctBase === "number" && def2.deltaPctBase <= -0.10);
-        }
-        return _deloadDateMemo[d];
-      };
+      // H-023: käyttää samaa jaettua predikaattia kuin e1RM-ikkuna (isDeloadEvidenceSet,
+      // määritelty topSets-rakennuksen yhteydessä). Aiemmin tässä oli oma identtinen
+      // kopio — kolmas esiintymä samasta säännöstä. Yksi kanoninen lähde
+      // (docs/MEMORY.md oppi 3). HUOM: recentTopSets on jo suodatettu, joten tämä
+      // on nyt käytännössä no-op — säilytetään koska ankkuripooli voi jatkossa
+      // tulla muualtakin ja suoja ei saa riippua kutsujärjestyksestä.
       const _anchorSets = recentTopSets.filter(s =>
-        s.setRole === "calibration" || !_isDeloadSet(s));
+        s.setRole === "calibration" || !isDeloadEvidenceSet(s));
       const _anchorPool = _anchorSets.length ? _anchorSets : recentTopSets;
       if (_anchorSets.length < recentTopSets.length && _anchorSets.length) {
         trace("ANCHOR_DELOAD_SKIP", { skipped: recentTopSets.length - _anchorSets.length },
@@ -5852,6 +5915,9 @@ async function recommend(options = {}) {
               vxAdjustmentPct: dt.vxAdjustmentPct,
               autoregTarget: dt.autoregTarget,
               planFloor: dt.planFloor,
+              // H-023: kun suunnitelma sitoi kattona, nämä kertovat mikä ohitettiin.
+              planCeiling: dt.planCeiling,
+              suppressedTarget: dt.suppressedTarget,
               hardCap: dt.hardCap,
               anchorMedianLoad: anchor.medianLoad,
               anchorMedianVx: anchor.medianVx,
@@ -6305,6 +6371,9 @@ async function recommend(options = {}) {
                   vxAdjustmentPct: dt.vxAdjustmentPct,
                   autoregTarget: dt.autoregTarget,
                   planFloor: dt.planFloor,
+                  // H-023: sama kattotieto myös cross-ref-haaraan.
+                  planCeiling: dt.planCeiling,
+                  suppressedTarget: dt.suppressedTarget,
                   hardCap: dt.hardCap,
                   anchorMedianLoad: selfAnchor.medianLoad,
                   anchorMedianVx: selfAnchor.medianVx,
