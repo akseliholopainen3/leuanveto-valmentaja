@@ -263,11 +263,19 @@ function roundToHalf(value) {
 // -kisapäivissä). streetlifting_16w:ssä niitä EI OLE → muutos on sille inertti.
 function resolveSetPersistence(slotRole) {
   return {
+    // LOSSY, ENNALLAAN: ~40 suodatinta repossa nojaa näihin neljään arvoon.
+    // secondary / opener / attempt2 / attempt3 / accessory → kaikki "accessory".
     setRole: slotRole === "primary" ? "top"
       : slotRole === "backoff" ? "backoff"
       : slotRole === "calibration" ? "calibration"
       : "accessory",
     isWarmup: slotRole === "warmup",
+    // H-021 (2026-08-23), OBS-058 vaihtoehto A: ALKUPERÄINEN rooli säilyy
+    // rinnalla. Ilman tätä persistoidussa setissä raskas kisa-avausyritys
+    // @90 % on erottamaton kevyestä motor-pattern-sarjasta @60 %, koska
+    // molemmat ovat "accessory". Additiivinen: mikään ei lue tätä vielä,
+    // joten kirjoituspolun muutos on kuormaneutraali.
+    slotRole: slotRole ?? null,
   };
 }
 
@@ -7861,10 +7869,34 @@ function computeMovementE1RM(movementSets, movementOrIsSystem, bodyweightKg) {
     ? movementOrIsSystem
     : isSystemLoadMovement(movementOrIsSystem);
 
-  // Take last 6 sets with valid data
-  const recent = movementSets
-    .filter((s) => s.externalLoadKg > 0 && s.reps >= 1)
-    .slice(-6);
+  // H-021 (2026-08-23), OBS-058 juurikorjaus: INTENSITEETTI-SUODATIN ENNEN IKKUNAA.
+  //
+  // Ennen: suodatin oli vain `kuorma > 0 && toistot >= 1`, ja aggregaatti on
+  // MEDIAANI. Kevyt sarja ei siis vain jäänyt vaikutuksetta — se painoi arviota
+  // aktiivisesti alas. Mitattu probe (OBS-058): 0 kevyttä → 187,0 kg · 3 kevyttä
+  // → 154,6 (−17 %) · 4 kevyttä → 122,1 (−35 %). Kynnys on jyrkkä eikä lineaarinen,
+  // koska ikkuna on 6 arvon mediaani → vika on näkymätön kunnes se laukeaa.
+  //
+  // Suodatin EI ole uusi sääntö: se on sama jota recommend():n pääankkuri käyttää
+  // jo (top | readiness_test | calibration, kolme lokusta enginessä). Yksi
+  // kanoninen määritelmä sille mikä sarja kelpaa voima-arvion todisteeksi —
+  // ei neljättä rinnakkaista (docs/MEMORY.md oppi 3).
+  //
+  // Lisäys kanoniseen: kisayritykset. Ne persistoituvat lossy setRole-arvolla
+  // "accessory", joten pelkkä setRole hylkäisi 90 %:n avausyrityksen. H-021:n
+  // kirjoituspolku säilyttää `slotRole`:n → yritykset kelpaavat todisteeksi
+  // uudessa datassa. Vanha data ei kanna kenttää, joten tämä vain LISÄÄ
+  // evidenssiä, ei poista sitä.
+  const countsAsEvidence = (s) =>
+    s.setRole === "top" || s.setRole === "readiness_test" || s.setRole === "calibration"
+    || s.slotRole === "opener" || s.slotRole === "attempt2" || s.slotRole === "attempt3";
+
+  const valid = movementSets.filter((s) => s.externalLoadKg > 0 && s.reps >= 1);
+  const evidence = valid.filter(countsAsEvidence);
+  // Graceful degradation: liikkeellä jolla ei ole yhtään kelpaavaa sarjaa
+  // (esim. puhdas apuliike, jonka kaikki sarjat ovat "accessory") arvio
+  // lasketaan ennallaan — muuten Liikepankin e1RM katoaisi niiltä kokonaan.
+  const recent = (evidence.length ? evidence : valid).slice(-6);
 
   if (!recent.length) return null;
 

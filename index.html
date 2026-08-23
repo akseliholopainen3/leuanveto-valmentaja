@@ -13879,6 +13879,11 @@ async function startWorkout(backfillDateISO = null) {
         category: slot.category,
         originalCategory: slot.category,
         role: slot.role,
+        // H-021 (OBS-058): suunniteltu intensiteetti + kisalaji-lippu kulkevat
+        // exercise-tasolle jotta ne voidaan persistoida settiin. Ilman näitä
+        // tallennettu setti ei kerro oliko se ohjelmoitu raskaaksi vai kevyeksi.
+        plannedLoadPct: slot.loadPct ?? null,
+        competitionLift: slot.competitionLift === true,
         variantName: slot.variantName || null,
         tempoNote: vOverride?.tempoNote || null,
         loadKg,
@@ -16092,7 +16097,8 @@ async function saveWorkoutToDb(sessionNotes = "") {
       // näille puhtaan Epleyn ja override:aa e1RM:n; ks. computeMovementProgress).
       // v4.58.0: kontrakti siirretty engine.js:ään puhtaaksi funktioksi jotta
       // se on koneellisesti lukittavissa (test-runner ei näe index.html:ää).
-      const savedSetRole = resolveSetPersistence(exercise.role).setRole;
+      const _persist = resolveSetPersistence(exercise.role);
+      const savedSetRole = _persist.setRole;
       // v4.38.0 (Phase 1B): mvReps[] per-rep MPV-array. Lasketaan UI-tilan
       // s.mvReps:istä, ja jos array on validi (≥2 ei-null arvoa), johdetaan
       // velocityMean = mean, velocityPeak = max, velocityRep1 = arr[0],
@@ -16277,6 +16283,15 @@ async function saveWorkoutToDb(sessionNotes = "") {
         movementId: exercise.movementId,
         variantId: variantCache[exercise.variantName] || null,
         setRole: savedSetRole,
+        // H-021 (2026-08-23), OBS-058 vaihtoehdot A + B: erottimet jotka
+        // lossy setRole hukkasi. slotRole erottaa openerin/yrityksen kevyestä
+        // apusarjasta; plannedLoadPct kertoo suunnitellun intensiteetin;
+        // competitionLift merkitsee kisalajin. Kaikki additiivisia — saveSets
+        // on läpinäkyvä dbPutBulk ilman kenttävalkolistaa, eikä yksikään
+        // lukupolku käytä näitä vielä (kuormaneutraali kirjoituspolun muutos).
+        slotRole: _persist.slotRole,
+        plannedLoadPct: exercise.plannedLoadPct ?? null,
+        competitionLift: exercise.competitionLift === true,
         externalLoadKg: s.loadKg,
         reps: s.reps,
         targetReps: s.targetReps,

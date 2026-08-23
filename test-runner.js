@@ -97,6 +97,8 @@ import {
   computeMovementE1RMHistory,
   // v4.58.0: persistointikontraktin lukko
   resolveSetPersistence,
+  // H-021 (OBS-058): e1RM-evidenssisuodattimen lukko
+  computeMovementE1RM,
 } from "./engine.js";
 
 import {
@@ -190,6 +192,89 @@ function testSetPersistenceContract() {
   const opener = resolveSetPersistence("opener");
   assert(opener.isWarmup === false && opener.setRole === "accessory",
     "persist: kisa-avausyritys persistoituu (isWarmup=false)");
+
+  // ── H-021 (OBS-058): alkuperäinen slotRole säilyy lossy setRolen rinnalla ──
+  // Ilman tätä persistoitu setti ei kerro oliko sarja ohjelmoitu raskaaksi vai
+  // kevyeksi, ja e1RM-mediaani-ikkuna sekoittaa kisa-avausyrityksen @90 %
+  // motor-pattern-sarjaan @60 %. Tämä lukitsee erottimen olemassaolon.
+  for (const r of ["primary", "secondary", "backoff", "accessory", "calibration",
+                   "opener", "attempt2", "attempt3", "warmup"]) {
+    assertEqual(resolveSetPersistence(r).slotRole, r,
+      `persist: ${r} säilyttää alkuperäisen slotRolen`);
+  }
+  assertEqual(resolveSetPersistence(undefined).slotRole, null,
+    "persist: puuttuva rooli → slotRole null (ei undefined-kenttää kantaan)");
+
+  // Tunnettu-negatiivinen: erotin EI saa vuotaa lossy setRoleen — ne neljä
+  // romahtavat yhä samaksi, koska ~40 suodatinta repossa nojaa siihen.
+  assert(resolveSetPersistence("opener").setRole === "accessory"
+      && resolveSetPersistence("opener").slotRole === "opener",
+    "persist: slotRole erottaa openerin VAIKKA setRole pysyy accessorynä (ei breaking-muutos)");
+}
+
+// ═══════════════════════════════════════════════════════════════
+// H-021 / OBS-058 — e1RM-evidenssisuodatin (2026-08-23)
+// ═══════════════════════════════════════════════════════════════
+// Ennen korjausta computeMovementE1RM otti MEDIAANIN viimeisestä 6 sarjasta
+// ilman roolisuodatinta. Kevyt sarja ei jäänyt vaikutuksetta vaan painoi
+// arviota aktiivisesti alas. OBS-058:n mitattu probe: 3 kevyttä sarjaa
+// −17 %, 4 kevyttä −35 %. Kynnys on jyrkkä (6 arvon mediaani-ikkuna) →
+// vika on näkymätön kunnes se laukeaa, ja se laukeaa taper-/kisaviikolla.
+function testH021E1RMEvidenceFilter() {
+  const bw = 91;
+  const heavy = (i) => ({
+    setId: "h021-t" + i, movementId: "m1", setRole: "top",
+    externalLoadKg: 150, reps: 3, actualVx: 1,
+  });
+  const light = (i) => ({
+    setId: "h021-l" + i, movementId: "m1", setRole: "accessory",
+    externalLoadKg: 60, reps: 10, actualVx: 4,
+  });
+
+  // Barbell-liike (isSystem = false → e1rmAccessory): 150 × (1 + 4/30) = 170,0
+  const onlyHeavy = computeMovementE1RM([0,1,2,3,4,5].map(heavy), false, bw);
+  assert(onlyHeavy !== null && Math.abs(onlyHeavy - 170) < 0.6,
+    "H-021: pelkät raskaat top-sarjat → e1RM ~170 kg (perustaso)",
+    "got " + onlyHeavy);
+
+  // ── KNOWN-POSITIVE: kevyet apusarjat EIVÄT saa painaa arviota ──
+  // Ilman suodatinta ikkuna olisi [l0..l3, t4, t5] → mediaani romahtaa.
+  const contaminated = computeMovementE1RM(
+    [heavy(0), heavy(1), light(0), light(1), light(2), light(3), heavy(4), heavy(5)], false, bw);
+  assert(contaminated !== null && Math.abs(contaminated - onlyHeavy) < 0.6,
+    "H-021 known-positive: 4 kevyttä apusarjaa ei muuta e1RM-arviota",
+    `puhdas=${onlyHeavy} kontaminoitu=${contaminated} — kevyt sarja vuotaa evidenssi-ikkunaan`);
+
+  // ── KNOWN-NEGATIVE 1: puhdas apuliike säilyttää arvionsa (graceful degradation) ──
+  // Jos suodatin olisi ehdoton, Liikepankin e1RM katoaisi jokaiselta liikkeeltä
+  // jolla ei ole yhtään top-sarjaa.
+  const pureAccessory = computeMovementE1RM([0,1,2].map(light), false, bw);
+  assert(pureAccessory !== null && pureAccessory > 0,
+    "H-021 known-negative: pelkkiä apusarjoja sisältävä liike saa yhä arvion",
+    "got " + pureAccessory);
+
+  // ── KNOWN-NEGATIVE 2: kisayritys kelpaa todisteeksi slotRolen kautta ──
+  // Yritykset persistoituvat lossy setRole-arvolla "accessory"; ilman slotRolea
+  // 90 %:n avausyritys hylättäisiin todisteena.
+  const attempt = {
+    setId: "h021-a1", movementId: "m1", setRole: "accessory", slotRole: "opener",
+    externalLoadKg: 150, reps: 3, actualVx: 1,
+  };
+  const withAttempt = computeMovementE1RM([light(0), light(1), attempt, attempt, attempt, attempt], false, bw);
+  assert(withAttempt !== null && Math.abs(withAttempt - 170) < 0.6,
+    "H-021 known-negative: kisayritys (slotRole opener) kelpaa evidenssiksi",
+    "got " + withAttempt + " — yritys hylättiin koska setRole on accessory");
+
+  // ── KNOWN-NEGATIVE 3: back-off ei ole evidenssiä ──
+  const backoff = {
+    setId: "h021-b1", movementId: "m1", setRole: "backoff",
+    externalLoadKg: 90, reps: 5, actualVx: 3,
+  };
+  const withBackoff = computeMovementE1RM(
+    [heavy(0), heavy(1), heavy(2), backoff, backoff, backoff], false, bw);
+  assert(withBackoff !== null && Math.abs(withBackoff - onlyHeavy) < 0.6,
+    "H-021 known-negative: back-off-sarjat eivät paina arviota",
+    `puhdas=${onlyHeavy} back-offilla=${withBackoff}`);
 }
 
 function testMath() {
@@ -5162,6 +5247,8 @@ export async function runTests() {
   console.log("=== LeVe AI Test Suite ===");
 
   testSetPersistenceContract();
+  // H-021 (OBS-058): e1RM-evidenssisuodatin — kevyt sarja ei paina arviota
+  testH021E1RMEvidenceFilter();
   testMath();
   testZClassification();
   testReadiness23Rule();

@@ -16,6 +16,18 @@
 //   Haara B  (PROGRESSION_TARGET_CROSSREF) → before.resolvedLoadKg = plan-taso kg
 //
 // READ-ONLY.
+//
+// ⚠ TÄMÄ EI OLE YLEINEN LOAD-DIFF-INSTRUMENTTI. Se mittaa poikkeamaa
+// SUUNNITELLUSTA slot-tasosta. H-021 (23.8.) osoitti rajan konkreettisesti:
+// e1RM-evidenssisuodatin muutti engine-pilotissa kaksi preskriptiota
+// (vk 5 120 → 123,5 kg, vk 9 151 → 157 kg) ja neljä kalibrointikuormaa,
+// mutta tämä sweep raportoi 442/442 bittitarkkaa. Syy on populaatiossa:
+// sweep ajaa oman sessiosimulaationsa eri seedillä kuin scenario-runner,
+// eikä sen kalibrointihistoria kehity samoin.
+// AUKTORITATIIVINEN LOAD-DIFF on engine-pilotin trace-diff:
+//   node tools/engine-pilot/run-pilot.mjs --profile=<p> --scenario=full-16w
+//   → vertaa output/traces/<p>-full-16w.json kahden version välillä.
+// Käytä tätä sweeppiä plan-%-kysymyksiin, älä "muuttuiko mikään" -kysymykseen.
 
 import { recommend, getTodayPlan, createStreetlifting16WMesocycle, PRESET_MOVEMENTS }
   from "../engine-pilot/lib/engine-bridge.mjs";
