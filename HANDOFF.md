@@ -4,112 +4,52 @@
 > Valmis handoff arkistoidaan → `docs/handoffs/HANDOFF_<id>.md`, ja tämä tiedosto nollataan tyhjäksi pohjaksi.
 > Auktoriteettijärjestys: ks. `CLAUDE.md` §7. Session-protokolla: ks. `CLAUDE.md` §8. Kurilista: `docs/SELKARANKA.md`. Muisti: `docs/MEMORY.md`. Post-Fable-operointi: `CLAUDE.md` §10.
 >
-> *Tila: **EI AKTIIVISTA HANDOFFIA.** Edellinen: H-022 (+ H-021) arkistoitu 23.8.2026, pushattu `5d0100f`. Seuraava työ odottaa Akselin ratifiointia — ks. konteksti alla.*
+> *Tila: **EI AKTIIVISTA HANDOFFIA.** 23.8.2026 suljettiin H-022, H-021 ja H-023 (pushattu `22e58f7`, APP_VERSION 4.67.0).*
 
 ---
 
-## KONTEKSTI SEURAAVAAN TYÖHÖN — rakennusikkuna 23.8.–n. 1.11.2026
+## KONTEKSTI — rakennusikkuna 23.8.–n. 1.11.2026
 
-**Päätös 23.8.2026 (Akseli):** atletti ajaa **King Of Weighted -valmentajan 10 viikon offseason-ohjelman** KoW:n omassa sovelluksessa, ei LeVessä. Syy: LeVe ei osaa ajaa heidän ohjelmaansa (kuusi progressiomallia per liike vs. meidän yksi), eikä sitä kannata pakottaa kirjuriksi ohjelmalle jota se ei ymmärrä — toteutuma oli edellisessä blokissa 56 %, ja kitkan lisääminen uhkaa juuri sitä muuttujaa.
+**Päätös 23.8.2026 (Akseli):** atletti ajaa **King Of Weighted -valmentajan 10 viikon offseason-ohjelman KoW:n omassa sovelluksessa**, ei LeVessä. Syy: LeVe ei osaa ajaa heidän ohjelmaansa (kuusi progressiomallia per liike vs. meidän yksi), eikä sitä kannata pakottaa kirjuriksi ohjelmalle jota se ei ymmärrä — toteutuma oli edellisessä blokissa 56 %, ja kitkan lisääminen uhkaa juuri sitä muuttujaa.
 
-**Tästä seuraa kaksi asiaa:**
+**LeVe ei ole tuotantokäytössä ~10 viikkoon.** Rakenteelliset muutokset voi tehdä ilman elävän blokin painetta. Kymmenen viikon päästä atletti tuo KoW-datan (kisalajien viikoittainen kuorma + RPE riittää — muu ohjelmassa ei muutu) → ajetaan meidän engine samasta historiasta jälkikäteen.
 
-1. **LeVe ei ole tuotantokäytössä ~10 viikkoon.** Tämä on rakennusikkuna: rakenteelliset muutokset voi tehdä ilman elävän blokin painetta.
-2. **Kymmenen viikon päästä saadaan ensimmäinen vertailukohta.** Atletti tuo KoW-datan (mieluiten export; muuten kisalajien viikoittainen kuorma + RPE) → ajetaan meidän engine samasta historiasta jälkikäteen → mitä *se* olisi määrännyt. Väliraportti vk 4:n kohdalla jos mahdollista.
+**Lähtötaso lukittu (mock meet 22.8.2026):** leuka 84 + dippi 100 + kyykky 180 = **364 kg** kolmen lajin total (vertailukelpoinen KoW:n +40–50 kg -lupaukseen) · MU 17,5 → **381,5 kg** neljän lajin kisatotal. **KoW:n ohjelma ei progressoi lisäpaino-MU:ta lainkaan.**
 
-**Lähtötaso lukittu (mock meet 22.8.2026):**
+**Vk 4 -mittari:** kisalajien kuorma samalla RPE:llä (5,5) viikoilla 1 → 4 → 7 → 10.
 
-| | kg |
+## MITÄ 23.8. KORJATTIIN
+
+| | |
 | --- | --- |
-| Lisäpainoleuanveto | 84 |
-| Lisäpainodippi | 100 |
-| Takakyykky | 180 |
-| **Kolmen lajin total** (vertailukelpoinen KoW:n lupaukseen) | **364** |
-| Muscle-up | 17,5 |
-| **Sinun kisatotal, 4 lajia** | **381,5** |
+| **H-022** | Suunniteltu slot-% sitoo: kevennysviikon lattia (Haara A) + cross-ref-cap (Haara B) + vk 17:n puuttuva viikkomäärittely |
+| **H-021** | e1RM-evidenssisuodatin — kevyt sarja ei enää paina voima-arviota (OBS-058) |
+| **H-023** | **Suunnitelma on katto, ei lattia** — kolmas ja viimeinen sitova lokus + kevennyssarjat pois e1RM-evidenssistä |
 
-KoW:n lupaus on +40–50 kg **kolmen lajin** totalissa → tavoite 404–414 kg. **KoW:n ohjelma ei progressoi lisäpaino-MU:ta lainkaan** (Bar Muscle Up ja No Dip Bar Muscle Up ovat ilman lisäpainoa, RPE 6–7 muotoharjoitteluna). Jos MU ei liiku, se ei ole ohjelman epäonnistuminen — se on asia jota se ei yritä.
+Yhdessä nämä sulkevat sen vikaluokan, jossa ohjelman oma luku ei sitonut. Todiste: viikko 1:n lisäpainoleuka 62,5 → **48 kg**, kun ohjelma sanoo 47,5 ja KoW 46,25.
 
-**Vk 4 -mittari (sovittu):** kisakyykyn, -leuan ja -dipin kuorma **samalla RPE:llä** (5,5) viikoilla 1 → 4 → 7 → 10. KoW antaa tämän ilmaiseksi, koska mikään ohjelmassa ei muutu blokkien välillä paitsi kisalajien toistot.
+## NELJÄ AUKKOA JOTKA JÄÄVÄT — vertailu KoW:hun 23.8.
 
-## MITÄ VERTAILU PALJASTI MEIDÄN ENGINESTÄ — neljä aukkoa
+1. **Progressiomalli per liike puuttuu.** KoW: kuusi nimettyä mallia liikekohtaisesti. Meillä yksi globaali. Suurin toiminnallinen ero.
+2. **Preskription kattavuus 26 %.** 444 slotista 327 (74 %) ilman plan-%:a, 144 (32 %) ilman sekä kuormaa että Vx-tavoitetta.
+3. **Vakaa mittauspiste puuttuu.** KoW pitää 16 liikettä identtisinä 10 vk; meillä 31 liikettä 12 vk:ssa, toistoskeema 6→4→3→2→1. Ohjelma ei pysty mittaamaan omaa kehitystään.
+4. **RPE-jakauma käännetty.** Kisalajit ka 7,7 (vk 7/9/10/11 = 9) vs. KoW 5–5,5; apuliikkeet 6,8 vs. 8–9. Volyymi 95–107 sarjaa/vk vs. 63.
 
-Mitattu 23.8. (`createStreetlifting16WMesocycle` 4.65.0 vs. KoW:n ruutukaappaukset):
-
-1. **Progressiomalli per liike puuttuu.** KoW: kuusi nimettyä mallia (Double progression · RPE progression · Bi-weekly · Slow start (RPE) · Performance reps · kiinteä), assignoituna liikekohtaisesti. Meillä: yksi globaali moottori. **Suurin toiminnallinen ero.**
-2. **Preskription kattavuus 26 %.** 444 slotista **327 (74 %) ilman plan-%:a**, 150 (34 %) ilman Vx-tavoitetta, **144 (32 %) ilman kumpaakaan**. Apuliikkeistä 42 % on tässä luokassa. KoW: jokaisella liikkeellä on kuorma tai RPE, oma 1RM ja progressiomalli — Side Bends 1RM 13 kg mukaan lukien.
-3. **Vakaa mittauspiste puuttuu kokonaan.** KoW pitää 16 liikettä identtisinä 10 viikkoa ja muuttaa vain kisalajien toistot (5 → 3) — jokainen apuliike on siis vertailukelpoinen aikasarja. Meillä 31 eri liikettä 12 viikossa, 9 vaihtuu kerralla vk 5:llä ja 6 lisää vk 9:llä, toistoskeema 6 → 4 → 3 → 2 → 1, RPE 7 → 8 → 9. **Ohjelma ei pysty mittaamaan omaa kehitystään** — ja koska e1RM on Epley-ekstrapolaatio kunkin viikon toistoalueesta, arvio liikkuu kaavan takia eikä voiman.
-4. **RPE-jakauma on käännetty.** Meillä kisalajit ka RPE 7,7 (vk 7/9/10/11 tasan 9), apuliikkeet ka 6,8. KoW: kisalajit 5–5,5, apuliikkeet 8–9. Lisäksi volyymi 63 sarjaa/vk (KoW) vs. 95–107 (meillä). Atletin tunnettu taipumus aliarvioida varaa (`docs/MEMORY.md`, atletti-profiili) tarkoittaa että määrätty RIR 1 on käytännössä failure.
-
-**Pienemmät, ei-estävät:** Vara-asteikko on kokonaisluku (`parseInt`, index.html) → puolikkaita RPE-arvoja ei voi kirjata · ohjelman ulkopuolisen treenin kirjaus rajattu 7 pv:n backfilliin (ei runtime-verifioitu) · liikehaku kytkemättä (OBS-060) · `Side Bends` puuttuu katalogista, neljä liikettä tarvitsee tarkan variantin (Pin Pull Up, No Dip Bar Muscle Up, High Incline Bench, 45° SA Triceps Extension).
+**Pienemmät:** Vara-asteikko kokonaisluku (`parseInt`) → puolikkaita RPE-arvoja ei voi kirjata · ohjelman ulkopuolisen treenin kirjaus rajattu 7 pv:n backfilliin (ei runtime-verifioitu) · liikehaku kytkemättä (OBS-060) · `Side Bends` puuttuu katalogista · `computeMovementReload` rep-sokea · treeninäkymässä ~14 tietolohkoa ennen ensimmäistä toistoa · lämmittelyjä 7,8/päivä (kuvaukset ~380 merkkiä) vs. KoW 2–3.
 
 ## AVOIN — ODOTTAA AKSELIA
 
-1. **ROADMAP NYT-merkki.** Vaihe 20 (Round B-γ) sulkeutui kisaan 22.8. `CLAUDE.md` §8 edellyttää siirtoa, mutta yllä olevat neljä aukkoa **eivät ole R-sekvenssin 20 vaiheessa**. Onko seuraava vaihe 19 (pohja-puhtaus), 14b, 18 — vai lisätäänkö sekvenssiin uusi vaihe "ohjelmointikoneen ilmaisuvoima"? Code ei siirrä merkkiä itse.
-2. **Työjärjestys rakennusikkunassa.** Aukot 1–3 ovat rakenteellisia ja kytköksissä toisiinsa (kattavuus ja mittauspiste ovat osin sama asia). Aukko 4 on ohjelmasisältöä, ei enginea.
+**ROADMAP NYT-merkki.** Vaihe 20 sulkeutui kisaan 22.8. `CLAUDE.md` §8 edellyttää siirtoa, mutta yllä olevat neljä aukkoa **eivät ole R-sekvenssin 20 vaiheessa**. Code ei siirrä merkkiä itse.
 
 ---
 
-# H-023 — Suunnitelma on katto, ei lattia
+# (uusi handoff tähän)
 
 ## 0. Metadata
-
-| Kenttä | Arvo |
-| --- | --- |
-| Handoff-id | **H-023** |
-| Tyyppi | `debug` (käytös muuttuu TARKOITUKSELLA rajatussa joukossa → regressio-odotus deklaroitu A3:ssa) |
-| Laadittu | 23.8.2026, Akselin kenttähavainnosta + toistetusta juurianalyysistä |
-| Pohja-HEAD | `2eea87e` · peruutusankkuri `backup-pre-H-023-2eea87e` |
-| Edeltäjä | H-022 (sama sääntö, kaksi polkua) · H-021 (e1RM-arvio) |
-
 ## 1. Tavoite
-
-`computeProgressionTarget` laskee lopputuloksen muodossa `Math.max(planFloor, autoregTarget)`. Muuttujan nimi kertoo suunnittelupäätöksen: **suunnitelma on lattia.** Kuorma ei saa mennä sen alle, mutta saa mennä rajattomasti sen yli.
-
-Tämä käännetään: **suunnitelma on katto.** Mikään progressiokerros ei nosta yli suunnitellun tason (± 2 % toleranssi). Kevennys alaspäin säilyy ennallaan — kaikki nykyiset capit ja suojat toimivat kuten ennenkin.
-
 ## 2. Acceptance criteria
-
-**A1** — `computeProgressionTarget` ei koskaan palauta arvoa > `planTarget × 1,02`, kun `planTarget` on numero. Katto pyöristetään ALAS puolikkaaseen kiloon (sama kuin H-022 A2).
-
-**A2** — Ylitys ei ole hiljainen: uusi ruleId `PLAN_PCT_BINDS_PROGRESSION` nimeää ohituksen ja kantaa `planTarget`, `suppressedTarget` ja `ruleHits`.
-
-**A3** — LOAD-DIFF Akselin omalla historialla, tuore ohjelma, 48 päivää. **Odotus deklaroitu:** viisi ylitystä nollaan. Mitattu ennen (plan → annettu):
-
-| | ohjelma | ennen | ylitys |
-| --- | --- | --- | --- |
-| vk 1 MA Lisäpainoleuanveto 6×V3 | 47,5 kg | 62,5 kg | +32 % |
-| vk 1 TO Lisäpainodippi 6×V3 | 52 kg | 64 kg | +23 % |
-| vk 1 TI Takakyykky 6×V3 | 141 kg | 165 kg | +17 % |
-| vk 2 TO Lisäpainodippi 6×V2 | 55,5 kg | 60 kg | +8 % |
-| vk 2 MA Lisäpainoleuanveto 6×V2 | 51,5 kg | 53 kg | +3 % |
-
-Muut rivit: **0 odottamatonta muutosta**, jokainen diff luokiteltu.
-
-**A4** — Lukkotesti known-positive + known-negatiivisilla, todennettu korjaamattomalla koodilla ennen luottamusta (Selkäranka 6). Known-negatiivit: deload-passthrough ennallaan · `planTarget === null` ennallaan · progressio saa yhä KEVENTÄÄ suunnitelmasta.
-
-**A5** — Neljä porttia vihreänä.
-
 ## 3. Reunaehdot ja scope-aita
-
-**Sallittu diff (funktionimin):** `engine.js` — `computeProgressionTarget`-funktion palautusarvo · `test-runner.js` — lukkotesti · `tools/coach-judge/a2-plan-floor-sweep.mjs` — Haara P -mittari · `sw.js` APP_VERSION · tämä tiedosto. **STOP jos diff ylittää valkolistan.**
-
-**EI kosketa tässä kierroksessa:** 46 kuormasäännön karsinta · `SUSTAINABILITY_CAP`/`HARD_CAP`/`INFLATION_CAP` -logiikat (ne jäävät, ne voivat vain keventää) · `computeMovementReload`-ankkurin rep-sokeus (kirjattu havainnoksi, min-precedence suojaa toistaiseksi) · ohjelman volyymi/RPE-viritys (eri päätös, Akselin) · treeninäkymän hierarkia · lämmittelyjen määrä.
-
-**Invariantit (CLAUDE.md §2):** ei kosketa VL-cappeihin, deload-syvyyteen eikä prioreihin. Elite-progressio ≤ 0,05 ×/vk säilyy — katto vain estää sen ylittämisen suunnitelman yli.
-
 ## 4. Atletti-vastaukset
-
-Ei sovellu (`debug`). Ratifioitu kenttähavainnosta 23.8.: *"Koskaan, siis koskaan ei saa jatkossa tulla tällaisia heittoja."*
-
 ## 5. Taustapäätökset
-
-- **Miksi katto eikä sääntöjen karsinta:** engine sisältää 46 kuormaan vaikuttavaa sääntöä. Katto tekee niistä vaarattomia poistamatta yhtäkään — ne voivat vain keventää. Pienempi muutos, pienempi riski.
-- **Miksi juuri `computeProgressionTarget`:** juurianalyysi 23.8. osoitti sen sitovaksi vaiheeksi (`planFloor` → `Math.max`). `SUSTAINABILITY_CAP` capasi jo alaspäin mutta "demonstroituun", ei suunnitelmaan.
-- **Todiste että ohjelma on oikeassa:** suunniteltu taso vk 1 leuka = 47,5 kg. KoW:n vastaava preskriptio samalle intensiteettivyöhykkeelle (9 vs 9,5 efektiivistä toistoa) = 46,25 kg. Ero 2,7 %. Annettu 62,5 kg edellyttäisi 110 kg:n maksimia; kisamaksimi on 84.
-
 ## 6. Avoimet kysymykset
-
-1. **Ohjelman viritys** (volyymi 95 vs 63 sarjaa/vk, kisalajin RPE 7 vs 5,5) — eri päätös, ei tässä.
-2. **`computeMovementReload` on rep-sokea** (`anchorKg = medianLoad`, ei toistoja/Vx:ää). Min-precedence suojaa nyt, mutta suoja on sattumaa. Oma kierros.
-
+## 7. Session-tulos

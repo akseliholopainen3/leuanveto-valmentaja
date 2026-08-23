@@ -87,6 +87,17 @@ Odottava γ-kisablokki on määritelmällisesti ei-aktiivinen JA sessioton — t
 
 ---
 
+
+### Oppi 14 — Katto tekee ylävirran arviosta kantavan; lattia piilottaa sen virheet (distill 2026-08-23, H-023)
+
+- **Fail:** H-023 muutti `computeProgressionTarget`-funktion lopputuloksen muodosta `Math.max(planTarget, autoregTarget)` katoksi. Lukkotesti K6-2b kaatui **välittömästi**: e1RM-ikkuna laski mediaanin kevennysviikon sarjoista (70 kg × 3 @ V2 antaa 96,8, mutta ikkunan 50 kg × 3 @ V4 vetivät sen 74,9:ään) → suunnitelma 49,5 kg, kun invariantti vaati ≥ 65.
+- **Juuri:** e1RM oli ollut saastunut koko ajan. Vanha lattia-kontrakti piilotti sen — autoregulaatio pakeni saastuneen suunnitelman **yli** ja päätyi sattumalta oikeaan lukuun. Vika ei syntynyt katosta; katto teki siitä näkyvän.
+- **Sääntö (consult):** kun muutat pehmeän rajan (lattia, ehdotus, oletusarvo) kovaksi rajaksi (katto, portti, invariantti), **jokainen ylävirran syöte josta raja riippuu muuttuu kantavaksi rakenteeksi.** Auditoi ne syötteet SAMALLA kierroksella — vanha käytös maskasi niiden virheet, ja maski katoaa sillä hetkellä kun raja alkaa sitoa. Vihreä testisuite ennen muutosta ei todista syötteistä mitään, koska pakotie teki ne ei-sitoviksi.
+- **Johdannaissääntö:** jos sama sääntö on repossa jo kahdessa paikassa (tässä kevennyssarjojen poissulku: `ANCHOR_DELOAD_SKIP` + 8a-orkestrointi), kolmas puuttuva esiintymä on todennäköisesti juuri se lokus jonka kova raja paljastaa. Yhdistä yhdeksi predikaatiksi samalla ([[oppi 3]] value-resolution-audit-pattern).
+- **Evidenssi:** H-023 2026-08-23 — löytyi testistä eikä kentältä, koska K6-2b oli olemassa. Kentällä sama olisi näkynyt liian kevyenä ohjelmana kuukausien päästä.
+
+---
+
 ## 2. Fallback-loki (P-013 M6)
 
 > Bio/kemia-luokittelija voi pudottaa Fable 5 -session Opus 4.8:aan. Protokolla: **ei keskeytystä** — kirjaa rivi, jatka työtä. Jos frekvenssi häiritsee, raportoi Akselille (syöte 23.6.-päätökseen).
