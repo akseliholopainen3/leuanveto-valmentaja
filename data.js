@@ -28,7 +28,7 @@ const TIMEZONE = "Europe/Helsinki";
 // v4.52.35 (M2/OBS-022): sisä-blokki-intensifikaatio — primary reps+Vx-ramppi
 // vk2/3/5/7/9/11 (HANDOFF §4). Bump triggeröi auto-rebuildin → ramppi aktivoituu
 // olemassa olevissa asennuksissa ilman edistyksen menetystä.
-const PROGRAM_BUILD_VERSION = "4.59.0";
+const PROGRAM_BUILD_VERSION = "4.65.0";
 
 // ── Store names ──
 const STORES = {
@@ -7822,6 +7822,16 @@ function createStreetlifting16WMesocycle(startDateISO, cal = {}) {
       { week:14, deltaPctBase:0.10,  label:"Vk 14 — Peaking",                 heavyReps:1, heavyTargetVx:1 },
       { week:15, deltaPctBase:-0.15, label:"Vk 15 — Taper",                   heavyReps:1, heavyTargetVx:3 },
       { week:16, deltaPctBase:-0.25, label:"Vk 16 — Kisaviikko 🏆",           heavyReps:1, heavyTargetVx:0 },
+      // H-022 (2026-08-23): vk 17 sai viikko-ohjelman v4.59.0:ssa (lauantai-kisaviikko)
+      // mutta EI viikkomäärittelyä — weekCount 17, weekPlans 17, weekDefs 16. Seuraus:
+      // getWeekDef palautti null → deltaPctBase ?? 0 = 0 → engine kohteli blokin
+      // KEVYINTÄ viikkoa tavallisena työviikkona (ei kevennyksen ohitusta progressiossa,
+      // ei viikkoleimaa, ei heavyReps/heavyTargetVx-arvoja). Peilaa vk 16:ta, koska
+      // vk 17 on rakenteellisesti sama kisaviikko lauantaikisalle.
+      // Label EI sisällä sanaa "deload"/"kevennys" — tarkoituksella, kuten vk 16:ssa:
+      // label-deload-override pakottaisi dayType=volume ja rikkoisi kisapäivän
+      // competition-tyypin sekä TO-päivän speed-aktivoinnin.
+      { week:17, deltaPctBase:-0.25, label:"Vk 17 — Kisaviikko (la) 🏆",      heavyReps:1, heavyTargetVx:0 },
     ],
     weekPlans,
     postCycleAnalysis: null,

@@ -829,7 +829,7 @@
 //          ei cappeja, K7-6 yksin), VL-capit viikkoleimoista + tutkimuskaton clamp
 //          (intensity ≤15 / peaking ≤10), per-laji-yrityskuormat omista e1RM:istään,
 //          B8-syöttö-UI + B9-odottava aktivointi (mikään ei muutu ennen 20.7.) + B10-taper-note.
-const APP_VERSION = "4.64.0";
+const APP_VERSION = "4.65.0";
 
 // v4.52.46 oli aiempi APP_VERSION tässä kohdassa.
 // v4.52.42 oli aiempi APP_VERSION (H-017 D1); 4.52.43 = OBS-048/049 kuorman-johto-korjaus.
