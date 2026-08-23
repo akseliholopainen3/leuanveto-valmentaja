@@ -106,6 +106,19 @@ const PROGRESSION_CONFIG = {
   ROUNDING_TOLERANCE: 0.25,
 };
 
+// H-022 (2026-08-23): SUUNNITELLUN SLOT-PROSENTIN SITOVUUS.
+//
+// Kun viikkosuunnitelman slotilla on eksplisiittinen intensiteetti (loadPct),
+// mikään myöhempi kerros ei saa hiljaisesti nostaa sen yli — kevyeksi ohjelmoitu
+// slotti on kevyt. Kaksi mitattua sitojaa (A1, 23.8.):
+//   • cross-ref-polku → computeProgressionTarget (regain) nosti "kisakyykky kevyt"
+//     -slotin 96 → 155,5 kg (+62 %) kuusi päivää ennen kisaa
+//   • same-liike-polku → vRepsToExpectedPct nosti kevennysviikon back-off-kyykyn
+//     44–46 % → 72–78 % (+45…+54,5 kg) viikoilla 4/8/12
+// Toleranssi kattaa pyöristyksen ja e1RM-mikroliikkeen; sitä suurempi poikkeama
+// ei ole koskaan hiljainen (A5) vaan nimetään traceen.
+const PLAN_PCT_TOLERANCE = 0.02;
+
 /**
  * Pick the appropriate rest recommendation for an exercise based on its role,
  * category, target Vx and reps. Compound accessories with loaded targetVx need
@@ -4871,6 +4884,17 @@ async function recommend(options = {}) {
     trace("DELOAD_OVERRIDE", { dayType: previousDayType }, { weekNum, dayType, mode: "label-builtin", label: weekDef?.label }, `Presetti-deload-viikko (${weekDef?.label}): dayType pakotettu volume:ksi, presetin kuorma-arvot säilytetty`);
   }
 
+  // H-022 A3: kevennysviikon tunnistin = enginen OMA määrittely (deltaPctBase < 0),
+  // sama ehto kuin computeProgressionTarget-funktion isDeload → yksi totuus, ei uutta
+  // rinnakkaista luokittelijaa. Kattaa sekä presetin omat kevennysviikot että
+  // käyttäjän lisäämän/korvaavan kevennysviikon (yllä oleva override asettaa −0,20).
+  //
+  // Ratifioitu 23.8.2026 sen jälkeen kun volyymipohjainen ehdokas (sarjat < 85 %
+  // perustasosta) osoittautui leimaamaan kevennykseksi myös peaking-viikot: ne ovat
+  // vähäsarjaisia mutta blokin kovimpia (vk 14 = 2×1 @93 %, deltaPctBase +0,10).
+  // Sama virhe kuin aiemmin hylätyssä intensiteettikriteerissä, peilikuvana.
+  const isPlannedDeloadWeek = (weekDef?.deltaPctBase ?? 0) < 0;
+
   trace("MESOCYCLE_PHASE", {}, { weekNum, dayType, label: weekDef?.label }, `Viikko ${weekNum}: ${weekDef?.label || "?"}`);
 
   // 3. Break analysis
@@ -6116,6 +6140,28 @@ async function recommend(options = {}) {
             slotResolveSourceA = "vRepsToExpectedPct";
           }
         }
+        // H-022 A3 (2026-08-23): KEVENNYSVIIKOLLA OHJELMOITU PROSENTTI SITOO.
+        // vReps-fallback johtaa prosentin toistoista (reps+Vx) — kevennysviikolla
+        // toistot ovat samat kuin työviikolla mutta kuorman KUULUU olla matalampi,
+        // joten johdettu prosentti ohittaa suunnitellun kevennyksen järjestelmällisesti
+        // ja aina ylöspäin. Mitattu ilman tätä: vk 4 44 % → 72 % (70,5 → 115,5 kg),
+        // vk 8 46 % → 76 % (73,5 → 121 kg), vk 12 44 % → 78 % (71 → 125,5 kg).
+        // Rajaus: cap, ei korvaus — vReps saa yhä KEVENTÄÄ suunnitellusta.
+        // Ulkopuolella: kisapäivän attemptsPct-slotit (supra-maksimaaliset yritykset,
+        // joiden kuorma tulee attemptsPct-listasta, ei kevennyslogiikasta).
+        if (isPlannedDeloadWeek && !slot.attemptsPct
+            && typeof slot.loadPct === "number"
+            && slotPctForResolveA > slot.loadPct) {
+          const _vRepsPct = slotPctForResolveA;
+          slotPctForResolveA = slot.loadPct;
+          slotResolveSourceA = "loadPct(H-022-kevennyslattia)";
+          trace("PLAN_PCT_BINDS_DELOAD",
+            { slotMovement: slot.defaultMovementName, slotRole: slot.role, pctForResolve: _vRepsPct },
+            { pctForResolve: slotPctForResolveA, planPct: slot.loadPct,
+              deltaPctBase: weekDef?.deltaPctBase ?? null, weekNum,
+              suppressedSource: "vRepsToExpectedPct" },
+            `${slot.defaultMovementName} (${slot.role}): kevennysviikko — ohjelmoitu ${(slot.loadPct*100).toFixed(0)} % sitoo, toistoista johdettu ${(_vRepsPct*100).toFixed(0)} % ohitettu.`);
+        }
         slot.resolvedLoadKg = roundToHalf(Math.max(0, slotIsBarbellA
           ? sessionEffectiveE1RM * slotPctForResolveA
           : sessionEffectiveE1RM * slotPctForResolveA - bodyweightKg));
@@ -6182,6 +6228,11 @@ async function recommend(options = {}) {
         let baseLoad = roundToHalf(Math.max(0, refIsBarbell
           ? effectiveBaseE1RM * slot.loadPct
           : (effectiveBaseE1RM + bodyweightKg) * slot.loadPct - bodyweightKg));
+
+        // H-022 A2: suunniteltu taso talteen ENNEN progressiokerrosta. Tämä on se
+        // luku jonka ohjelma lupasi; kaikki myöhempi mitataan sitä vasten.
+        const planLevelKg = baseLoad;
+        let planCappedCR = false;
 
         // Rate-limit slotin oman liikkeen historiasta
         // v4.27.14: käyttää computeRateLimitAnchor-helperiä (viim. 3 session
@@ -6290,6 +6341,35 @@ async function recommend(options = {}) {
           }
         }
 
+        // H-022 A2 (2026-08-23): CROSS-REF-SLOTIN OHJELMOITU PROSENTTI SITOO ±2 pp.
+        // Progressiokerros (regain × Helms-weekly × Vx-adj) ankkuroituu slotin OMAAN
+        // historiaan, ei suunniteltuun intensiteettiin — joten kevyeksi ohjelmoitu
+        // slotti nousi järjestelmällisesti yli suunnitelman. Mitattu ilman tätä:
+        // vk 14 LA "kisakyykky kevyt" 96 → 155,5 kg (+62 %, REGAIN_NEAR) kuusi päivää
+        // ennen kisaa; vk 1/2/3 LA 80 → 115,5 / 88 → 118 / 93 → 126 kg (REGAIN_FAR).
+        //
+        // Cap EI jäädytä kehitystä: plan-taso lasketaan cfg-lattiaisesta ref-e1RM:stä
+        // (effectiveBaseE1RM), joten se nousee atleetin voiman mukana. Cap estää vain
+        // suunnitellun kevennyksen ohituksen. Kevennysviikoilla progressio ohittaa
+        // itsensä jo (PROGRESSION_DELOAD_PASSTHROUGH) → siellä tämä on no-op.
+        if (typeof slot.loadPct === "number" && planLevelKg > 0) {
+          // Pyöristys ALAS puolikkaaseen kiloon: roundToHalf voisi nostaa katon yli
+          // toleranssin (88 × 1,02 = 89,76 → 90 = +2,3 %) ja rikkoa A2:n oman ehdon.
+          const planCeilingKg = Math.floor(planLevelKg * (1 + PLAN_PCT_TOLERANCE) * 2) / 2;
+          if (baseLoad > planCeilingKg) {
+            const _over = baseLoad;
+            baseLoad = planCeilingKg;
+            planCappedCR = true;
+            trace("PLAN_PCT_BINDS_CROSSREF",
+              { slotMovement: slot.defaultMovementName, referenceMovement: slot.loadPctReferenceMovementName,
+                resolvedLoadKg: _over },
+              { resolvedLoadKg: baseLoad, planLoadKg: planLevelKg, planPct: slot.loadPct,
+                tolerancePct: PLAN_PCT_TOLERANCE * 100, weekNum,
+                suppressedSource: "computeProgressionTarget" },
+              `${slot.defaultMovementName}: ohjelmoitu ${(slot.loadPct*100).toFixed(0)} % = ${planLevelKg} kg sitoo — progressio olisi antanut ${_over} kg, capattu ${baseLoad} kg (+${(PLAN_PCT_TOLERANCE*100).toFixed(0)} % toleranssi).`);
+          }
+        }
+
         slot.resolvedLoadKg = baseLoad;
         // F-2 (2026-05-31; intensiteetti-tietoinen korjaus 2026-06-02): jos cross-ref-slotti on
         // poikkeuksellisesti same-liike JA suunniteltu kevyemmäksi/yhtä raskaaksi (efektiiviset toistot
@@ -6301,10 +6381,21 @@ async function recommend(options = {}) {
                  && (slot.reps + slot.targetVx) < primaryEffectiveReps)) {
           slot.resolvedLoadKg = roundToHalf(targetExternalLoad);
         }
+        // H-022 A5: sitova vaihe traceen. Kanava 2 (23.8.) osoitti että CROSSREF-rivi
+        // EI kantanut pctForResolve-kenttää lainkaan → trace-kanava oli skeemaltaan
+        // sokea juuri sille sitojalle jonka harness-kanava mittasi. Lisätty:
+        // effektiivinen pct, plan-taso kg ja sitova lähde.
+        const _crEffPct = refIsBarbell
+          ? (effectiveBaseE1RM > 0 ? slot.resolvedLoadKg / effectiveBaseE1RM : null)
+          : ((effectiveBaseE1RM + bodyweightKg) > 0
+              ? (slot.resolvedLoadKg + bodyweightKg) / (effectiveBaseE1RM + bodyweightKg) : null);
         trace("SLOT_LOAD_RESOLVED_CROSSREF",
           { slotRole: slot.role, slotMovement: slot.defaultMovementName,
             referenceMovement: slot.loadPctReferenceMovementName },
-          { resolvedLoadKg: slot.resolvedLoadKg, pct: slot.loadPct, refE1RM: refE1RM.toFixed(1) },
+          { resolvedLoadKg: slot.resolvedLoadKg, pct: slot.loadPct, refE1RM: refE1RM.toFixed(1),
+            pctForResolve: _crEffPct, planLoadKg: planLevelKg,
+            resolveSource: slot.resolvedLoadKg === planLevelKg ? "loadPct"
+              : (planCappedCR ? "loadPct(H-022-plan-cap)" : "computeProgressionTarget") },
           `${slot.defaultMovementName}: ${(slot.loadPct*100).toFixed(0)}% × ${slot.loadPctReferenceMovementName}-e1RM (${refE1RM.toFixed(1)} kg) = ${slot.resolvedLoadKg} kg`);
         continue;
       }
@@ -6383,8 +6474,11 @@ async function recommend(options = {}) {
                 : ownE1RM * ownPct));
               trace("SLOT_LOAD_RESOLVED_OWN",
                 { slotRole: slot.role, slotMovement: slot.defaultMovementName },
+                // H-022 A5: pctForResolve + resolveSource myös tälle riville (kanava 2:n
+                // löydös: _OWN ei kantanut kenttää → sitoja ei ollut luettavissa tracesta).
                 { resolvedLoadKg: slot.resolvedLoadKg, ownE1RM: ownE1RM.toFixed(1),
-                  pct: ownPct.toFixed(3), bwFamily: ownIsBWFamily, fromSets: ownSets.length },
+                  pct: ownPct.toFixed(3), pctForResolve: ownPct, resolveSource: "vRepsToExpectedPct",
+                  bwFamily: ownIsBWFamily, fromSets: ownSets.length },
                 `${slot.defaultMovementName}: oma e1RM ${ownE1RM.toFixed(1)} kg × ${(ownPct * 100).toFixed(0)} % (vReps ${slot.reps ?? 0}+${slot.targetVx ?? 2})${ownIsBWFamily ? " − BW" : ""} = ${slot.resolvedLoadKg} kg [Haara C: eri-liike-apuliike omasta datasta]`);
 
               // K5-1 (retro-kenttä OBS-HT, la vk10): APULIIKE-REGRESSION-LATTIA. Mediaani-6

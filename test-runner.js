@@ -4941,6 +4941,151 @@ async function testSp2SlotLoadInvariant() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// H-022 — suunniteltu slot-% sitoo (2026-08-23)
+// ═══════════════════════════════════════════════════════════════
+// A3: kevennysviikolla ohjelmoitu loadPct sitoo — vReps-fallback ei nosta sen yli.
+// Ilman lukkoa mitattu: vk 4/8/12 back-off-kyykky 44–46 % → 72–78 % (+45…+54,5 kg).
+// Known-positive (kevennysviikko) JA known-negative (työviikko) samasta fixtuurista:
+// jos cap vuotaisi työviikolle tai lakkaisi puremasta kevennysviikolla, tämä laukeaa.
+async function testH022DeloadPlanPctBinds() {
+  const PID = "test-h022-kyykky";
+  const movements = [{
+    movementId: PID, name: "Takakyykky", category: "alaraaja",
+    isPrimary: true, isPreset: true, isCompetitionLift: true, loadType: "external", tier: 1,
+  }];
+  const sets = [];
+  for (let i = 0; i < 6; i++) {
+    sets.push({
+      setId: "h022-" + i, movementId: PID, sessionId: "h022sess" + i,
+      externalLoadKg: 150, reps: 3, actualVx: 2, targetVx: 2, setRole: "top",
+      timestamp: "2026-01-0" + (i + 1) + "T10:00:00Z",
+    });
+  }
+
+  // deltaPctBase ohjaa kevennysviikon tunnistusta (enginen oma määrittely).
+  const runWith = async (deltaPctBase) => {
+    const meso = createDefaultMesocycle("2026-01-05");
+    if (meso.weekDefs?.[0]) meso.weekDefs[0].deltaPctBase = deltaPctBase;
+    const ma = meso.weekPlans[0].days.find(d => d.dayOfWeek === 1);
+    for (const s of (ma?.slots || [])) {
+      s.defaultMovementName = "Takakyykky";
+      s.isBarbell = true;
+      if (s.role === "primary") { s.loadPct = 0.55; s.reps = 2; s.targetVx = 4; }
+      // Back-off suunniteltu selvästi kevyeksi (44 %), mutta reps+Vx tuottaisi ~78 %.
+      if (s.role === "backoff") { s.loadPct = 0.44; s.reps = 3; s.targetVx = 5; s.sets = 3; }
+    }
+    return await recommend({
+      settings: { bodyweightKg: 91 }, bodyweightKg: 91, dateISO: "2026-01-05",
+      mesocycle: meso, allMovements: movements, allSets: sets, sessions: [],
+      readiness: {
+        combined: "GREEN", capLevel: 0,
+        channels: { velocity: { class: "GREEN", z: 0.1 }, hrv: { class: "GREEN", z: 0.2 },
+          vara: { class: "GREEN", z: null, meanOvershoot: 0 } },
+      },
+      primaryMovementId: PID, dryRun: true,
+    });
+  };
+
+  const pctOf = (rec) => {
+    const t = (rec.traces || []).find(t => t.ruleId === "SLOT_LOAD_RESOLVED"
+      && t.before?.slotRole === "backoff");
+    return t ? { planPct: t.after?.pct, usedPct: t.after?.pctForResolve, src: t.after?.resolveSource } : null;
+  };
+
+  // ── KNOWN-POSITIVE: kevennysviikko → ohjelmoitu 44 % sitoo
+  let recDl;
+  try { recDl = await runWith(-0.25); }
+  catch (e) { assert(false, "H-022 A3: recommend() ei saa heittää (kevennysviikko)", e.message); return; }
+  const dl = pctOf(recDl);
+  assert(dl !== null, "H-022 A3: fixture tuottaa back-off-slotin SLOT_LOAD_RESOLVED-tracen (non-vacuous)",
+    "tracea ei löytynyt — fixture ei enää testaa invarianttia");
+  if (dl) {
+    assert(Math.abs(dl.usedPct - dl.planPct) < 0.005,
+      "H-022 A3: kevennysviikolla ohjelmoitu loadPct sitoo",
+      `planPct=${dl.planPct} usedPct=${dl.usedPct} src=${dl.src}`);
+    assert((rec => (rec.traces || []).some(t => t.ruleId === "PLAN_PCT_BINDS_DELOAD"))(recDl),
+      "H-022 A5: ohitus ei ole hiljainen — PLAN_PCT_BINDS_DELOAD-trace emittoidaan",
+      "tracea ei löytynyt");
+  }
+
+  // ── KNOWN-NEGATIVE: työviikko → vReps saa yhä johtaa prosentin
+  let recWk;
+  try { recWk = await runWith(0.05); }
+  catch (e) { assert(false, "H-022 A3: recommend() ei saa heittää (työviikko)", e.message); return; }
+  const wk = pctOf(recWk);
+  assert(wk !== null, "H-022 A3: työviikko-fixture tuottaa back-off-tracen (non-vacuous)", "tracea ei löytynyt");
+  if (wk) {
+    assert(wk.usedPct > wk.planPct + 0.02 && wk.src === "vRepsToExpectedPct",
+      "H-022 A3 known-negative: työviikolla vReps sitoo ennallaan (cap ei vuoda)",
+      `planPct=${wk.planPct} usedPct=${wk.usedPct} src=${wk.src}`);
+    assert(!(recWk.traces || []).some(t => t.ruleId === "PLAN_PCT_BINDS_DELOAD"),
+      "H-022 A3 known-negative: työviikolla ei kevennyslattiaa",
+      "PLAN_PCT_BINDS_DELOAD emittoitui työviikolla");
+  }
+}
+
+// A2 + A5: cross-ref-slotin ohjelmoitu prosentti sitoo ±2 pp progressiokerrosta vasten,
+// ja SLOT_LOAD_RESOLVED_CROSSREF kantaa plan-tason + sitovan lähteen (kanava 2:n
+// löydös 23.8.: rivi oli skeemaltaan sokea juuri tälle sitojalle).
+async function testH022CrossRefPlanCap() {
+  const REF = "h022-ref-kyykky", SELF = "h022-self-etukyykky";
+  const movements = [
+    { movementId: REF, name: "Takakyykky", category: "alaraaja",
+      isPrimary: true, isPreset: true, loadType: "external", tier: 1 },
+    { movementId: SELF, name: "Etukyykky", category: "alaraaja",
+      isPrimary: false, isPreset: true, loadType: "external", tier: 2 },
+  ];
+  const sets = [];
+  for (let i = 0; i < 6; i++) {
+    sets.push({ setId: "h022r-" + i, movementId: REF, sessionId: "h022rs" + i,
+      externalLoadKg: 150, reps: 3, actualVx: 2, targetVx: 2, setRole: "top",
+      timestamp: "2026-01-0" + (i + 1) + "T10:00:00Z" });
+    // Oma historia SELVÄSTI raskaampi kuin 60 % viitteestä → progressio/lattia
+    // yrittäisi nostaa slotin plan-tason yli.
+    sets.push({ setId: "h022s-" + i, movementId: SELF, sessionId: "h022ss" + i,
+      externalLoadKg: 140, reps: 3, actualVx: 3, targetVx: 2, setRole: "top",
+      timestamp: "2026-01-0" + (i + 1) + "T11:00:00Z" });
+  }
+  const meso = createDefaultMesocycle("2026-01-05");
+  const ma = meso.weekPlans[0].days.find(d => d.dayOfWeek === 1);
+  ma.slots.push({
+    role: "secondary", category: "alaraaja", defaultMovementName: "Etukyykky",
+    sets: 2, reps: 3, targetVx: 3, loadPct: 0.60,
+    loadPctReferenceMovementName: "Takakyykky", isBarbell: true,
+  });
+  let rec;
+  try {
+    rec = await recommend({
+      settings: { bodyweightKg: 91 }, bodyweightKg: 91, dateISO: "2026-01-05",
+      mesocycle: meso, allMovements: movements, allSets: sets,
+      sessions: [{ sessionId: "h022ss5", dateISO: "2026-01-04", completed: true }],
+      readiness: {
+        combined: "GREEN", capLevel: 0,
+        channels: { velocity: { class: "GREEN", z: 0.1 }, hrv: { class: "GREEN", z: 0.2 },
+          vara: { class: "GREEN", z: null, meanOvershoot: 0 } },
+      },
+      primaryMovementId: REF, dryRun: true,
+    });
+  } catch (e) { assert(false, "H-022 A2: recommend() ei saa heittää", e.message); return; }
+
+  const cr = (rec.traces || []).find(t => t.ruleId === "SLOT_LOAD_RESOLVED_CROSSREF"
+    && t.before?.slotMovement === "Etukyykky");
+  assert(!!cr, "H-022 A2: fixture tuottaa cross-ref-tracen (non-vacuous)",
+    "SLOT_LOAD_RESOLVED_CROSSREF puuttuu — fixture ei enää testaa invarianttia");
+  if (!cr) return;
+  // A5-kenttälukko: ilman näitä trace-kanava on sokea sitojalle.
+  assert(typeof cr.after?.planLoadKg === "number",
+    "H-022 A5: CROSSREF-trace kantaa plan-tason (planLoadKg)", "kenttä puuttuu");
+  assert(typeof cr.after?.resolveSource === "string",
+    "H-022 A5: CROSSREF-trace kantaa sitovan lähteen (resolveSource)", "kenttä puuttuu");
+  // A2-invariantti.
+  const plan = cr.after?.planLoadKg, got = cr.after?.resolvedLoadKg;
+  assert(typeof plan === "number" && typeof got === "number" && got <= plan * 1.02 + 0.01,
+    "H-022 A2: cross-ref-slotti ei ylitä ohjelmoitua tasoa yli 2 %:n",
+    `plan=${plan} kg → resolved=${got} kg (${plan ? (((got - plan) / plan) * 100).toFixed(1) : "?"} %)`);
+}
+
+// ═══════════════════════════════════════════════════════════════
 // F-3 Koti=live -guard (value-resolution-audit A2, 2026-05-31)
 // ═══════════════════════════════════════════════════════════════
 // Same-liike-volyymi-apuliikkeen resolvedLoadKg (live) = kanoninen
@@ -5126,6 +5271,9 @@ export async function runTests() {
   await testRecommendScenarios();
   // OBS-CORE SP-2 (2026-05-30): saman liikkeen ei-primary-slotti ≤ pää (slot-load-invariantti)
   await testSp2SlotLoadInvariant();
+  // H-022 (2026-08-23): suunniteltu slot-% sitoo — kevennyslattia + cross-ref-cap + A5-kentät
+  await testH022DeloadPlanPctBinds();
+  await testH022CrossRefPlanCap();
   // F-3 Koti=live -guard (value-resolution-audit A2): apuliike live = preview (kanoninen e1RM × loadPct)
   await testKotiEqualsLiveAccessory();
   // OBS-048/049: cal-base kanoninen + top-single-ramppi (kuorman valmennuksellinen oikeellisuus)
