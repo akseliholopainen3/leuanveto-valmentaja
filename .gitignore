@@ -1,13 +1,15 @@
+
+!.claude/settings.json
 # Claude Code -hakemisto: preview-server-konfiguraatiot, sessio-tiedostot,
+# HUOM: ".claude/*" (ei ".claude/") jotta negaatio toimii — git ei tarkista
+# OS-tason roskat
+# Poikkeus: settings.json on Stop hook -turvaverkko jonka pitää säilyä
 # auto-memory yms. Nämä ovat dev-tooli- ja käyttäjäkohtaisia, eivät kuulu
 # repositorioon.
-# Poikkeus: settings.json on Stop hook -turvaverkko jonka pitää säilyä
-# worktree-/kontribuoija-vaihdoissa (vaihe 6 strategisesta prosessista).
-# HUOM: ".claude/*" (ei ".claude/") jotta negaatio toimii — git ei tarkista
 # tiedosto-poikkeuksia kun koko hakemisto on ignoroitu.
-.claude/*
-!.claude/settings.json
-
-# OS-tason roskat
+# worktree-/kontribuoija-vaihdoissa (vaihe 6 strategisesta prosessista).
 .DS_Store
+.claude/*
 Thumbs.db
+tools/output/
+tools/output/wizard-dump-8profiles.md

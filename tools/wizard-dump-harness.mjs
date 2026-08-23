@@ -1,8 +1,8 @@
 // wizard-dump-harness.mjs — KAPSTONI pilari 3 W1-dumppi (read-only diagnostiikka)
 // Ajaa Wizard-mapperin + mesosykligeneraattorin + post-process-pipelinen 8 profiilille
-// ja kirjoittaa SOKKOUTETUN dumpin (ohjelmat erillään tyylivalinnoista) → docs/wizard-dump-8profiles.md.
+// ja kirjoittaa SOKKOUTETUN dumpin (ohjelmat erillään tyylivalinnoista) → tools/output/wizard-dump-8profiles.md.
 // EI engine-muutoksia. Replikoi index.html:n finalize-ketjun (4019→4122) uskollisesti.
-import { writeFileSync } from "node:fs";
+import { writeFileSync, mkdirSync } from "node:fs";
 globalThis.self = globalThis; // data.js IDB-tarkistus (engine-bridge-malli)
 
 import {
@@ -218,8 +218,9 @@ ${results.map(fmtStyle).join("\n")}
 ${results.map(fmtVector).join("\n---\n\n")}
 `;
 
-writeFileSync(new URL("../docs/wizard-dump-8profiles.md", import.meta.url), md, "utf8");
-console.log(`DUMP VALMIS: ${okCount}/${profiles.length} onnistui → docs/wizard-dump-8profiles.md (${md.length} merkkiä)`);
+mkdirSync(new URL("../tools/output/", import.meta.url), { recursive: true });
+writeFileSync(new URL("../tools/output/wizard-dump-8profiles.md", import.meta.url), md, "utf8");
+console.log(`DUMP VALMIS: ${okCount}/${profiles.length} onnistui → tools/output/wizard-dump-8profiles.md (${md.length} merkkiä)`);
 for (const r of results) {
   if (r.error) console.log(`  ${r.id}: ❌ ${r.error.split("\n")[0]}`);
   else console.log(`  ${r.id}: ✓ style=${(r.meso.customConfig._wizardMeta||r.mapped._wizardMeta).chosenStyleId} goal=${r.mapped.goal} weeks=${r.meso.weekCount} days=${r.mapped.daysPerWeek}${r.mapped.isMultiBlock?" MULTI":""}`);

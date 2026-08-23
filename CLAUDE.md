@@ -13,11 +13,11 @@ LeVe AI on suomenkielinen voimaharjoittelusovellus (PWA, paikallinen IndexedDB, 
 **Arkkitehtuuri:**
 
 - `engine.js` — kaikki laskenta (e1RM, readiness, mesocycle, recommend())
-- `data.js` — IndexedDB-kerros (12 storea, schema-versio 5)
+- `data.js` — IndexedDB-kerros (storet + schema-versio: `grep -c "^  [a-z]*:" data.js` / `SCHEMA_VERSION`)
 - `index.html` — UI + CSS + workout-flow
-- `wizard/` — kysymys-vastaus → ohjelma-mappaus (32 kysymystä, 17 ohjelmointityyliä)
-- `tools/engine-pilot/` — regression-pilot-harness (8 profiilia × 148 sessiota)
-- `test-runner.js` — selain-yksikkötestit (854 testitapausta, ?test=1; headless-ajo: `tools/browser-test/`)
+- `wizard/` — kysymys-vastaus → ohjelma-mappaus (kysymysten ja tyylien määrä: ks. `wizard/wizard-data.js`)
+- `tools/engine-pilot/` — regression-pilot-harness (profiilit: `ls tools/engine-pilot/profiles/`)
+- `test-runner.js` — selain-yksikkötestit (?test=1; headless-ajo: `tools/browser-test/` — testien määrä tulostuu ajossa)
 - `sw.js` — service worker (PWA auto-update)
 
 **Versio:** kts. `sw.js` APP_VERSION.
@@ -58,7 +58,7 @@ Esimerkki (8a, opittava parametri):
 
 - **A1:** `learnedVlCap.strength` on aina välillä [0,15; 0,20]
 - **A2:** Jos posterior karkaisi rajan ulkopuolelle, engine emittoi `LEARNED_PARAM_OUTLIER`-tracen ja clamppaa
-- **A3:** Akselin pilot-regressio (148 sessiota) tuottaa identtiset kuorma-arvot baseline-versiona, ellei eksplisiittisesti todettu että oppiva malli muuttaa niitä; tällöin uudet arvot pysyvät invarianttien sisällä
+- **A3:** Akselin pilot-regressio tuottaa identtiset kuorma-arvot baseline-versiona, ellei eksplisiittisesti todettu että oppiva malli muuttaa niitä; tällöin uudet arvot pysyvät invarianttien sisällä
 
 **/goal-kierros ei valmistu** ennen kuin: koodi kääntyy + lint clean + selain-testit passaavat + regressio-pilot passaa + acceptance criterion -testi passaa + spec→koodi-diff tyhjä.
 
@@ -70,8 +70,8 @@ Esimerkki (8a, opittava parametri):
 
 1. `node tools/engine-pilot/lib/smoke-test.mjs` — sanity check
 2. `node tools/engine-pilot/run-pilot.mjs --profile=akseli-elite-streetlifter --scenario=full-16w` — bittitarkka regressio
-3. `node tools/wizard-pilot.mjs` — wizard-materialisaation rakenteelliset invariantit (11 profiilia: kalusto/MEV/cap/alaraaja/primaarit/duplikaatit; K5, retroauditti — engine-pilot + selaintestit ovat sokeita tälle pinnalle)
-4. `node tools/browser-test/run-browser-tests.mjs` — KOKO selain-testisuite (854 testitapausta, ?test=1) headless-selaimessa (riippuvuudeton CDP-ajuri, järjestelmän Edge/Chrome, ~3 s). Joka ajo tuoreella väliaikaisprofiililla → service worker -cache ei voi tuottaa stale-tuloksia (S10-premissivirheen 2026-07-03 oppi).
+3. `node tools/wizard-pilot.mjs` — wizard-materialisaation rakenteelliset invariantit (kalusto/MEV/cap/alaraaja/primaarit/duplikaatit; K5, retroauditti — engine-pilot + selaintestit ovat sokeita tälle pinnalle)
+4. `node tools/browser-test/run-browser-tests.mjs` — KOKO selain-testisuite (?test=1) headless-selaimessa (riippuvuudeton CDP-ajuri, järjestelmän Edge/Chrome, ~3 s). Joka ajo tuoreella väliaikaisprofiililla → service worker -cache ei voi tuottaa stale-tuloksia (S10-premissivirheen 2026-07-03 oppi).
 
 Jos mikä tahansa epäonnistuu (exit ≠ 0), hook palauttaa `exit 1` → Claude jatkaa työskentelyä eikä voi pinnata "valmis":ksi.
 
@@ -107,6 +107,40 @@ Selaintestit voi ajaa myös manuaalisesti selaimessa (`?test=1`) — mutta verta
 - **UI-stringeissä EI tutkijanimiä** (Pareja-Blanco, Helms, Jukic, …). Tutkimusperusta säilyy koodikommenteissa.
 - **Eliittitason itse-arviointi rehellisesti** — älä anna pyöreitä myötäileviä numeroita; nimeä puuttuvat pisteet konkreettisesti.
 - **Tarkista git log + status ennen edit-vaiheita** — auto-memory-snapshot voi olla vanhentunut.
+
+### 6.1 MITATTAVAA LUKUA EI KIRJOITETA PROOSAAN
+
+**Jos luku on saatavissa ajamalla, sitä ei kovakoodata dokumenttiin.** Kirjoita sen
+sijaan komento tai lähde josta luku syntyy.
+
+Peruste on mitattu, ei periaatteellinen. Elokuussa 2026 tämä tiedosto väitti
+selaintestejä olevan 854; todellinen luku oli 1024. Väitteen kaatoi riippumaton
+verifiointi, ei kukaan lukija — eli virhe oli elänyt huomaamatta. Samaan aikaan
+OBS-057 oli kirjaimellisesti "audit-checklist odottaa eläkkeelle jäänyttä kanavaa",
+ja saman session commit-viestien rivinumeroviitteet vanhenivat YHDEN commitin
+sisällä (jouduttiin korjaamaan errata-commitilla).
+
+Nämä eivät vanhentuneet koska dokumentteja on paljon. Ne vanhentuivat koska
+mitattavissa oleva asia kirjoitettiin ylös sen sijaan että se mitattaisiin.
+Sama kuvio kuin [[stale_detector_pattern]]: staattinen väite toisen kerroksen
+tilasta vanhenee hiljaa.
+
+**Koskee:** testien määrä · profiilien määrä · sessioiden määrä · viikkojen määrä ·
+storejen määrä · kattavuusprosentit · volyymikäyrät · **rivinumerot**.
+
+**Käytännön säännöt:**
+
+- Viittaa koodiin **funktionimellä, älä rivinumerolla** (`resolveSetPersistence`,
+  ei `engine.js:238`). Rivinumerot vanhenevat seuraavassa commitissa.
+- Jos rivinumero on pakko antaa, merkitse mistä versiosta se on laskettu.
+- Generoitu artefakti kuuluu `tools/`-ajon outputiksi, ei `docs/`-hakemistoon
+  versionhallintaan.
+- Jos luku on argumentin kannalta olennainen, **kirjaa myös komento** jolla se
+  tarkistetaan — silloin lukija voi falsifioida sen.
+
+Poikkeus: **historialliset mittaustulokset** (esim. `docs/MEMORY.md`:n mittausloki,
+OBS-kirjausten mitatut luvut, commit-viestien LOAD-DIFF-tulokset) ovat aikaleimattuja
+havaintoja menneestä tilasta — ne EIVÄT vanhene, koska ne eivät väitä nykytilaa.
 
 ---
 
