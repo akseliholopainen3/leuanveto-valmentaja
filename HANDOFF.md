@@ -17,9 +17,9 @@
 | Handoff-id | **H-022** (H-020 = MU-yritys-%-semantiikka, H-021 = OBS-058 pysyvät varattuina kandidaatteina) |
 | Tyyppi | `debug` (confirm-then-fix; käytös muuttuu TARKOITUKSELLA rajatussa joukossa → regressio-odotus deklaroitu A4:ssä) |
 | Laadittu | 23.8.2026 Cowork (v1) · v2 Coden PRE-FLIGHT-raportista · v3 Coden tarkennuksista · siirretty repoon 23.8. |
-| Tila | **AKTIIVINEN — A1 kanava 2 ajettu, kanava 1 kesken** |
+| Tila | **AKTIIVINEN — A1 VALMIS (molemmat kanavat), A2+A3 seuraavaksi** |
 | Liittyy R-vaiheeseen | post-γ / ennen seuraavan ohjelmablokin käynnistystä |
-| Pohja-HEAD | `898b1a2` (origin/main `05a0c4d` — 2 doc-committia pushaamatta: `4ff03ab`, `898b1a2`; push-lupa erillinen päätös) |
+| Pohja-HEAD | `9443ec2` (pushattu 23.8.; PRE-FLIGHT tehtiin `898b1a2`:sta) |
 | Versiot | APP_VERSION 4.64.0 · PROGRAM_BUILD_VERSION 4.59.0 |
 
 **Repo-tila jonka v1 ei tuntenut** (12.–22.8., kuusi versiota 4.59.0→4.64.0): O1/O2/O3/O4/O7/O8/O9 korjattu; vk 17 -kisaviikko lisätty (`8c8fa65`); kisapäivän kadonnut 3. yritys korjattu (`1c55c00`) → poistettu γ-synteesin haittaavien listalta.
@@ -36,9 +36,9 @@ Täysi versio mittauksineen: **`docs/AC_H-022.md`**. Tiivistelmä:
 
 | | kriteeri | tila |
 | --- | --- | --- |
-| **A1** | CONFIRM: kaksikanavainen diagnostiikka sitovan vaiheen dumpilla (STOP-GATE, vain-luku) | kanava 2 ✅ · kanava 1 ⏳ |
+| **A1** | CONFIRM: kaksikanavainen diagnostiikka sitovan vaiheen dumpilla (STOP-GATE, vain-luku) | ✅ **VALMIS** — molemmat kanavat |
 | **A2** | FIX (PÄÄKORJAUS): deload/taper-floor progressiokerrosta vasten | odottaa A1:tä |
-| **A3** | FIX (EHDOLLINEN): plan-pct:n auktoriteetti vReps-fallbackia vasten — kaksikanavainen kynnys | odottaa A1:tä |
+| **A3** | FIX — **VÄLTTÄMÄTÖN** (ei enää ehdollinen, ks. §7): plan-pct:n auktoriteetti vReps-fallbackia vasten | kynnys täyttyi A1:ssä |
 | **A4** | Regressio-pilot deklaroidulla odotuksella (Selkäranka 6) | — |
 | **A5** | Poikkeama ei ole koskaan hiljainen; sitova vaihe traceen (ml. CROSSREF/_OWN-rivit) | — |
 
@@ -73,13 +73,53 @@ Ei sovellu (`debug`). Ratifioinnissa kuitatut parametrit: toleranssi **± 2 pp**
 3. **Poikkeusluokkien täydellisyys** — AVOIN. Kanava 2 (Cowork 23.8.) osoitti listan olevan laajempi kuin OBS-049 + attemptsPct: `weekPlans`-rakenteesta puuttuu `loadPct` myös 26 dippi- ja 25 CTB-leukaslotilta. **Kanava 1 tuottaa auktoritatiivisen luettelon.**
 4. **H-numero** — kuitattu: H-022.
 
-## 7. Session-tulos  *(Claude Code täyttää)*
+## 7. Session-tulos  *(Claude Code, 23.8.2026)*
 
 | Kenttä | Arvo |
 | --- | --- |
-| Sessio päättyi | — |
-| Muuttuneet tiedostot | — |
-| Tehdyt päätökset | — |
-| Validointi | — |
-| Jäi auki | — |
-| Seuraava askel | — |
+| Sessio päättyi | 23.8.2026 |
+| Muuttuneet tiedostot | `HANDOFF.md` · `docs/AC_H-022.md` · `tools/coach-judge/a1-binding-stage.mjs` · `tools/coach-judge/a1-harness-sweep.mjs` |
+| Validointi | A1 ajettu MOLEMMILLA kanavilla; kanavaristiriita ratkaistu |
+| HEAD | `9443ec2` (pushattu) |
+
+### Tehdyt päätökset
+
+1. **A1 valmis, STOP-GATE saavutettu.** Molemmat sitojat todellisia ja eri poluilla: primary/non-primary → `vRepsToExpectedPct` (harness 44 · tracet 976/2413, yksisuuntaisia); cross-ref → `computeProgressionTarget` (16). **A3 ei ole ehdollinen vaan välttämätön.**
+2. **P0 kumottu.** Coden 13.8. LOAD-DIFF 0 -mittaus oli virheellinen: harnessin liikekatalogilta puuttui `tier`, ja vReps-haara vaatii tier 1/2/3 → haara ei suorittunut. Coworkin v1-hypoteesi oli oikeassa. Yksityiskohdat: `docs/AC_H-022.md`.
+
+### ⚠ SCOPE LAAJENNETTU — Akseli ratifioi 23.8. (vaihtoehto 3)
+
+H-022 kattaa nyt KAKSI ongelmaa, ei yhtä:
+
+- **A — kevennysviikot eivät kevene** (mitattu 976 kertaa, aina ylöspäin). Alkuperäinen scope.
+- **B — kevennysviikkoja on liikaa peräkkäin.** UUSI. Akselin kysymys 23.8.: *"miksi ihmeessä viikko 16 olisi kevennys, kun juuri olin mökillä keventämässä?"* Mitattu: **6 peräkkäistä kevennysviikkoa, vk 12–17.** Ohjelma kohtelee mökkiviikkoa normaalina treeniviikkona ja rakentaa taperin sen päälle sen sijaan että laskisi sen viimeisestä oikeasta treeniviikosta.
+
+**Kytkös joka pakotti vaihtoehdon 3:** A:n korjaaminen yksin tekee seuraavasta taperista SYVEMMÄN kuin tämä oli — eli pahentaa B:tä. Niitä ei voi korjata erikseen.
+
+### Kevennysviikon tunnistin — käytä tätä, älä keksi uutta
+
+**Volyymipohjainen: viikko on kevennysviikko jos sen sarjamäärä < 85 % perustasosta** (perustaso = 8 suurimman viikon keskiarvo). Tuottaa 16 vk:n ohjelmalle: **4, 8, 12, 13, 14, 15, 16, 17.**
+
+Kaksi hylättyä kriteeriä (älä toista):
+
+- `deltaPctBase < 0` — **kenttä on tyhjä kaikilla 17 viikolla** → nolla osumaa
+- Intensiteettipohjainen (maxPct < 80 %) — leimaa hypertrofiaviikot 1–6 kevennykseksi; matala prosentti on niissä oikein, ei kevennystä
+
+### B:n mittari
+
+**Peräkkäisten kevennysviikkojen maksimijakso.** Nyt **6** (vk 12–17). Tavoite **≤ 2–3.**
+
+### Seuraava askel
+
+1. Peruutusankkuri `backup-pre-H-022-9443ec2` ENNEN ensimmäistä koodimuutosta
+2. A2 + A3 yhdessä (molemmat sitojat), B:n rajoite mukana
+3. LOAD-DIFF-sweep + neljä porttia + A4-luokittelu
+4. STOP ennen pushia
+
+### Avoin kysymys Akselille (kysyttiin, ei vastattu)
+
+**Pitäisikö Muscle-upilla olla ohjelmoitu prosentti** kuten muilla kisaliikkeillä, vai onko absoluuttinen kg-ohjaus oikea sille liikkeelle? MU esiintyy §6-3:n listalla primarynä 10× (ei plan-%:a) — voi liittyä siihen että appin MU-arvio oli 5,3 kg todellisen ollessa 17,5.
+
+### Raportointitapa — sitova
+
+**Raportoi Akselille treenikielellä** (kilot, viikot, sarjat), koodidetalji vain pyydettäessä. `docs/MEMORY.md` oppi 5. Tätä rikottiin koko H-022:n ajan, ja Akselin paras haaste (mökkiviikko-kysymys) tuli vasta kun raportti käännettiin kiloiksi. Ratifiointipyyntö on muotoiltava niin että Akseli voi arvioida sen — jos sitä ei osaa kysyä treenikielellä, muutosta ei ole ymmärretty itsekään.
