@@ -76,6 +76,17 @@ Odottava γ-kisablokki on määritelmällisesti ei-aktiivinen JA sessioton — t
 
 ---
 
+
+### Oppi 13 — Puuttuva arvo ei ole todiste ennen kuin lukupaikka on osoitettu oikeaksi (distill 2026-08-23, H-022)
+
+- **Fail:** H-022:n ratifioitu kevennysviikko-tunnistin valittiin sillä perusteella, että `deltaPctBase` on "tyhjä kaikilla 17 viikolla → nolla osumaa". Kenttä oli täytetty kaikilla 16 viikkomäärittelyllä — mittaus luki sen `weekPlans`-listalta, mutta se asuu `weekDefs`-listalla. Nollatulos eteni ratifiointiin asti ja tuotti tilalle volyymipohjaisen tunnistimen, joka leimasi kevennykseksi blokin **kovimman** viikon (peaking 2 × 1 @ 93 %) — peaking-viikko on vähäsarjainen tarkoituksella.
+- **Juuri:** sama kuvio kuin saman handoffin instrumenttiopissa 4 (puuttuva `tier` teki koodihaarasta näkymättömän). Molemmissa nollatulos tulkittiin löydökseksi, vaikka se oli instrumentin oire.
+- **Sääntö (consult):** ennen kuin puuttuva arvo tai nollatulos tulkitaan todisteeksi, on osoitettava (a) että mitattu koodihaara ylipäätään suorittui ja (b) että kenttä luettiin siltä objektilta, jolla se skeeman mukaan asuu. **Sitä ennen nollatulos on hypoteesi instrumentista, ei havainto kohteesta.**
+- **Johdannaissääntö:** jos engine jo sisältää määritelmän mitattavalle asialle (tässä `computeProgressionTarget`-funktion `isDeload`), älä rakenna rinnakkaista luokittelijaa — käytä enginen omaa. Rinnakkainen luokittelija on uusi ajautumispinta (sama perhe kuin stale-detektori-kuvio, K-A1).
+- **Evidenssi:** H-022 2026-08-23 — premissi kaatui `createStreetlifting16WMesocycle`-ajolla nykykoodista; tunnistimet antoivat 5 vs. 8 kevennysviikkoa ja pisimmät peräkkäisjaksot 2 vs. 6. Koko scope-laajennus B purettiin tämän seurauksena.
+
+---
+
 ## 2. Fallback-loki (P-013 M6)
 
 > Bio/kemia-luokittelija voi pudottaa Fable 5 -session Opus 4.8:aan. Protokolla: **ei keskeytystä** — kirjaa rivi, jatka työtä. Jos frekvenssi häiritsee, raportoi Akselille (syöte 23.6.-päätökseen).
